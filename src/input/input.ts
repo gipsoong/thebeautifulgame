@@ -5,7 +5,7 @@ export type Device = 'kbm' | 'pad';
 
 const DEADZONE = 0.18;
 // Gamepad API "standard" mapping: https://w3c.github.io/gamepad/#remapping
-const BTN = { A: 0, B: 1, X: 2, LB: 4, RB: 5, RT: 7, VIEW: 8 } as const;
+const BTN = { A: 0, B: 1, X: 2, LB: 4, RB: 5, RT: 7, VIEW: 8, START: 9 } as const;
 
 /**
  * Merges keyboard + mouse and gamepad into one Actions value per frame.
@@ -14,10 +14,12 @@ const BTN = { A: 0, B: 1, X: 2, LB: 4, RB: 5, RT: 7, VIEW: 8 } as const;
 export class Input {
   device: Device = 'kbm';
   onCameraButton: () => void = () => {};
+  onPauseButton: () => void = () => {};
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0, l: false, r: false, lastMove: -Infinity };
   private padIndex: number | null = null;
   private viewHeld = new Set<number>(); // pad indices with View held, so one press is one camera change
+  private startHeld = new Set<number>();
   private pad: Gamepad | null = null;
   private pads: Gamepad[] = [];
 
@@ -122,6 +124,9 @@ export class Input {
     const view = b(BTN.VIEW);
     if (view && !this.viewHeld.has(gp.index)) this.onCameraButton();
     if (view) this.viewHeld.add(gp.index); else this.viewHeld.delete(gp.index);
+    const start = b(BTN.START);
+    if (start && !this.startHeld.has(gp.index)) this.onPauseButton();
+    if (start) this.startHeld.add(gp.index); else this.startHeld.delete(gp.index);
     const a: Actions = {
       mx: x, my: y, aim: x || y ? norm(x, y) : null,
       sprint: b(BTN.RT) || b(BTN.RB), pass: b(BTN.A), shoot: b(BTN.B), lob: b(BTN.X), switch: b(BTN.LB),

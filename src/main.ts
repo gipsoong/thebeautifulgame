@@ -55,7 +55,15 @@ function setLevel(l: number): void {
   $twoP.hidden = level !== TWO_PLAYER;
   try { localStorage.setItem('tbg-level', String(level)); } catch { /* storage blocked */ }
 }
-function openMenu(): void { inMenu = true; $menu.hidden = false; newMatch(); }
+const $paused = document.querySelector<HTMLElement>('#paused')!;
+let paused = false;
+function setPaused(on: boolean): void {
+  paused = on && !inMenu && !match.over;
+  $paused.hidden = !paused;
+  document.querySelector('#paused-score')!.textContent = `Home ${match.score[0]} – ${match.score[1]} Away`;
+  canvas.focus();
+}
+function openMenu(): void { setPaused(false); inMenu = true; $menu.hidden = false; newMatch(); }
 function kickOff(): void { inMenu = false; $menu.hidden = true; newMatch(); }
 setLevel(level);
 $menu.hidden = !inMenu;
@@ -63,6 +71,10 @@ $levels.forEach((b, i) => b.addEventListener('click', () => setLevel(i)));
 document.querySelector('#kickoff')!.addEventListener('click', kickOff);
 document.querySelector('#again')!.addEventListener('click', newMatch);
 document.querySelector('#to-menu')!.addEventListener('click', openMenu);
+document.querySelector('#resume')!.addEventListener('click', () => setPaused(false));
+document.querySelector('#quit')!.addEventListener('click', openMenu);
+input.onPauseButton = () => setPaused(!paused);
+addEventListener('blur', () => setPaused(true)); // tabbing away stops the clock
 const overlay = { message: '', messageT: 0 };
 
 input.onCameraButton = () => renderer.cam.cycle();
@@ -74,6 +86,12 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Enter') { e.preventDefault(); kickOff(); }
     return;
   }
+  if (paused) {
+    if (e.code === 'Escape' || e.code === 'KeyP') setPaused(false);
+    if (e.code === 'KeyQ') openMenu();
+    return;
+  }
+  if ((e.code === 'Escape' || e.code === 'KeyP') && !match.over) { setPaused(true); return; }
   if (e.code === 'Enter' && match.over) newMatch();
   if (e.code === 'Escape' && match.over) openMenu();
   if (e.code === 'KeyM') { sound.toggleMute(); showSound(); }
@@ -93,6 +111,10 @@ function frame(now: number): void {
     renderer.cam.toWorld(sx, sy) ?? { x: me.x + (sx > canvas.clientWidth / 2 ? 50 : -50), y: me.y - 50 };
   const [actions, away] = match.humans === 2 ? input.read2(me, toWorld) : [input.read(me, toWorld), undefined];
 
+  if (paused) {
+    acc = 0;
+    if (input.device === 'pad' && actions.shoot) openMenu(); // B / Circle
+  }
   while (acc >= DT) { // fixed 120 Hz simulation, decoupled from the display refresh rate
     for (const e of match.step(actions, DT, away)) {
       if (e.type === 'message') {

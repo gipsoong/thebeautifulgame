@@ -8,6 +8,18 @@ import { NO_ACTIONS } from '../src/input/actions';
 const always = () => 0; // rng that makes every roll succeed
 
 describe('contact', () => {
+  it('a carrier shielding the ball with his body is harder to tackle', () => {
+    const roll = () => 0.6;
+    const attempt = (bx: number, by: number) => {
+      const carrier = createPlayer(50, 34, 1, 'MID', 1);
+      carrier.fx = 0; carrier.fy = 1; // side-on to the tackler
+      const tackler = createPlayer(48.9, 34, 0, 'DEF', 2);
+      return standingTackle(tackler, createBall(bx, by), carrier, roll)?.type ?? 'missed';
+    };
+    expect(attempt(50, 34.8)).toBe('won'); // ball out to the side: there is a foot to get in
+    expect(attempt(50.3, 34)).toBe('missed'); // ball behind the carrier's body
+  });
+
   it('a standing tackle from the front takes the ball off a slow dribbler', () => {
     const carrier = createPlayer(50, 34, 1, 'MID', 1);
     carrier.fx = -1; // facing the tackler

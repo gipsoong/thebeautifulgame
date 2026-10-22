@@ -19,6 +19,9 @@ export function standingTackle(p: Player, ball: Ball, carrier: Player | null, rn
   let chance = 0.55 + 0.3 * facing;
   if (carrier && carrier.team !== p.team) {
     chance -= 0.25 * (Math.hypot(carrier.vx, carrier.vy) / SPRINT);
+    // Shielding: with the carrier's body between tackler and ball there is little to get a foot on.
+    const t = Math.max(0, Math.min(1, ((carrier.x - p.x) * bx + (carrier.y - p.y) * by) / (d * d || 1)));
+    if (Math.hypot(carrier.x - (p.x + bx * t), carrier.y - (p.y + by * t)) < PLAYER_R * 1.2) chance -= 0.35;
     // Coming through the back of the man rather than the ball is a foul.
     const cx = carrier.x - p.x, cy = carrier.y - p.y;
     const behind = carrier.fx * cx + carrier.fy * cy > 0.75 * Math.hypot(cx, cy) && Math.hypot(cx, cy) < d;

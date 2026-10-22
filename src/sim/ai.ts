@@ -5,6 +5,7 @@ import type { Ball } from './ball';
 import { leadTarget, lobPowerFor, passPowerFor } from './kick';
 import { keeperTarget, shotCrossingY } from './keeper';
 import { type Player, queueKick } from './player';
+import { offsidePlayers } from './rules';
 import { type TeamId, attackDir, oppGoalX, ownGoalX } from './team';
 
 /** What the AI sees each step. Built by the match. */
@@ -100,9 +101,10 @@ function forwardRun(p: Player, ctx: AIContext, dt: number): Actions {
   const c = ctx.carrier;
   if (p.runT === 0 && c && c !== p && p.aiT <= 0) {
     p.aiT = 0.5;
-    if ((p.x - c.x) * dir > 0 && Math.hypot(p.x - c.x, p.y - c.y) < 40 && ctx.rng() < 0.25) p.runT = 2.2;
+    if ((p.x - c.x) * dir > 0 && Math.hypot(p.x - c.x, p.y - c.y) < 40 && ctx.rng() < 0.25) p.runT = 1.6;
   }
-  const x = p.runT > 0 ? line + dir * 9 : line - dir * 1;
+  // Hold the line until the run, then go: a pass played into his path before he crosses it is onside.
+  const x = p.runT > 0 ? line + dir * 9 : line - dir * 1.5;
   const target = { x: dir > 0 ? Math.max(slot.x, Math.min(x, PITCH_W - 6)) : Math.min(slot.x, Math.max(x, 6)), y: slot.y };
   return steer(p, target, p.runT > 0 ? 0 : 6);
 }
@@ -155,8 +157,9 @@ export function bestPass(p: Player, ctx: AIContext, allowKeeper = false): PassOp
   const dir = attackDir(p.team);
   const opps = ctx.players.filter((o) => o.team !== p.team && o.state !== 'down');
   let best: PassOption | null = null;
+  const offside = offsidePlayers(p, ctx.players, ctx.ball);
   for (const t of ctx.players) {
-    if (t === p || t.team !== p.team || t.state === 'down' || (t.role === 'GK' && !allowKeeper)) continue;
+    if (t === p || t.team !== p.team || t.state === 'down' || (t.role === 'GK' && !allowKeeper) || offside.has(t)) continue;
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     if (dist < 5 || dist > 45) continue;
     let open = 6, marked = 6;

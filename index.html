@@ -12,9 +12,14 @@
     <main id="game">
       <canvas id="pitch" tabindex="0" aria-label="Football pitch"></canvas>
       <div class="bug">
-        <span class="team home">Home</span><span class="score" id="score-home">0</span><span class="score" id="score-away">0</span><span class="team away">Away</span>
+        <span class="team home">Home</span><span class="score" id="score-home">0</span><span class="score" id="score-away">0</span><span class="team away">Away</span><span class="clock" id="clock">0:00</span>
         <span class="device" id="device">Keyboard + mouse</span>
       </div>
+      <section class="fulltime" id="fulltime" hidden>
+        <h2>Full-time</h2>
+        <p class="result" id="result"></p>
+        <button id="again" type="button">Play again (Enter / A)</button>
+      </section>
       <button class="help-toggle" id="show-help" type="button">Controls (H)</button>
       <section class="help" id="help" hidden>
         <h2>Controls</h2>

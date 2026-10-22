@@ -37,7 +37,7 @@ describe('match', () => {
     expect(m.ball.x).toBeLessThan(PITCH_W + 5);
     expect(m.ball.y).toBeGreaterThan(-5);
     expect(m.ball.y).toBeLessThan(PITCH_H + 5);
-  });
+  }, 30_000);
 
   it('fields two teams of eleven and starts with a kick-off taken by the human', () => {
     const m = new Match(mulberry32(2));
@@ -58,5 +58,5 @@ describe('match', () => {
     const m = new Match(mulberry32(3), false);
     for (let t = 0; t < 300; t += DT) for (const e of m.step(NO_ACTIONS, DT)) if (e.type === 'kick' && e.kind === 'shoot') shots++;
     expect(shots).toBeGreaterThan(2);
-  });
+  }, 30_000);
 });

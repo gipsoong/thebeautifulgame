@@ -1,4 +1,6 @@
-import { CENTRE_Y, GK_HOLD_TIME, GOAL_H, GOAL_W, PITCH_H, PITCH_W } from '../config';
+import {
+  CENTRE_Y, GK_HOLD_TIME, GOAL_H, GOAL_W, HALF_GAME_SECONDS, HALF_REAL_SECONDS, PITCH_H, PITCH_W, STOPPAGE_GAME_SECONDS,
+} from '../config';
 import type { Actions } from '../input/actions';
 import { clamp, norm } from '../math';
 import { type AIContext, bestPass, intercept, playPass, pressTarget, steer, think } from './ai';
@@ -7,14 +9,17 @@ import { collidePlayers, standingTackle, startSlide, stepSlide } from './contact
 import { leadTarget, lobPowerFor, passPowerFor, pickReceiver, tryKick } from './kick';
 import { keeperSave } from './keeper';
 import { type KickKind, type Player, createPlayer, queueKick, stepPlayer, touchBall, updateCharge } from './player';
+import { inBox, offsidePlayers } from './rules';
 import { FOUR_FOUR_TWO, type TeamId, attackDir, other, ownGoalX, toWorld } from './team';
 
 export type MatchEvent =
   | { type: 'message'; text: string }
   | { type: 'kick'; kind: KickKind; power: number; player: Player; human: boolean }
-  | { type: 'goal'; team: TeamId };
+  | { type: 'goal'; team: TeamId }
+  | { type: 'whistle'; period: Period };
 
-type RestartKind = 'kickoff' | 'throw-in' | 'goal kick' | 'corner' | 'free kick';
+export type Period = 'first half' | 'half-time' | 'second half' | 'full-time';
+type RestartKind = 'kickoff' | 'throw-in' | 'goal kick' | 'corner' | 'free kick' | 'penalty';
 interface Restart { kind: RestartKind; team: TeamId; x: number; y: number; t: number }
 
 const PASS_TIME = 2.2; // how long a pass counts as "in flight" for the receiver and his team
@@ -29,8 +34,13 @@ export class Match {
   holder: Player | null = null; // keeper holding the ball in his hands
   passTarget: Player | null = null;
   restart: Restart | null = null;
+  period: Period = 'first half';
+  clock = 0; // football seconds into the current half
+  /** Players caught offside by the last pass; offside is given if one of them plays the ball next. */
+  offside = new Set<Player>();
   /** After a restart is set up, opponents keep their distance until the ball is played. */
-  private awaitKick: { team: TeamId; x: number; y: number; min: number } | null = null;
+  private awaitKick: { team: TeamId; x: number; y: number; min: number; kind: RestartKind } | null = null;
+  private breakT = 0; // half-time pause
   private holdT = 0;
   private passT = 0;
   private sinceKick = 0;
@@ -63,9 +73,23 @@ export class Match {
     return null;
   }
 
+  get over(): boolean { return this.period === 'full-time'; }
+
   step(human: Actions, dt: number): MatchEvent[] {
     const ev: MatchEvent[] = [];
     const { ball, rng } = this;
+    if (this.over) return ev;
+    if (this.period === 'half-time') {
+      this.breakT -= dt;
+      if (this.breakT <= 0) {
+        this.period = 'second half'; this.clock = 0;
+        ev.push({ type: 'whistle', period: this.period });
+        this.setRestart('kickoff', 1, PITCH_W / 2, CENTRE_Y, 0); // the other team kicks off the second half
+      }
+      return ev;
+    }
+    this.clock += dt * (HALF_GAME_SECONDS / HALF_REAL_SECONDS);
+    if (this.clock >= HALF_GAME_SECONDS + STOPPAGE_GAME_SECONDS) { this.endHalf(ev); return ev; }
     this.passT = Math.max(0, this.passT - dt);
     this.sinceKick += dt;
     if (this.passT === 0) this.passTarget = null;
@@ -96,6 +120,10 @@ export class Match {
       ev.push({ type: 'kick', kind, power, player: p, human: p === this.controlled });
       this.lastTouch = p;
       this.sinceKick = 0;
+      // No offside from throw-ins, corners or goal kicks.
+      const k = this.awaitKick?.kind;
+      this.offside = k === 'throw-in' || k === 'corner' || k === 'goal kick' ? new Set() : offsidePlayers(p, this.players, ball);
+      if (k === 'penalty') this.diveForPenalty(p);
       this.awaitKick = null;
       if (this.holder === p) this.holder = null;
       this.passTarget = r ?? null;
@@ -107,14 +135,14 @@ export class Match {
       if (t === 'stand') {
         const res = standingTackle(p, ball, carrier, rng);
         if (res?.type === 'won') this.lastTouch = p;
-        if (res?.type === 'foul') this.foul(res.on, ev);
+        if (res?.type === 'foul') this.foul(res.by, res.on, ev);
       } else if (t === 'slide') startSlide(p);
     }
     for (const p of this.players) stepPlayer(p, ball, decisions.get(p)!.actions, dt);
     for (const p of this.players) {
       const res = stepSlide(p, ball, this.players, rng);
       if (res?.type === 'won') this.lastTouch = p;
-      if (res?.type === 'foul') this.foul(res.on, ev);
+      if (res?.type === 'foul') this.foul(res.by, res.on, ev);
     }
 
     if (!this.holder && !this.restart) {
@@ -125,6 +153,12 @@ export class Match {
       for (const p of order) {
         if (p.role === 'GK' && this.holder) break;
         if (touchBall(p, ball, decisions.get(p)!.actions.sprint)) {
+          if (this.offside.has(p)) {
+            ev.push({ type: 'message', text: 'Offside' });
+            this.setRestart('free kick', other(p.team), clamp(p.x, 1, PITCH_W - 1), clamp(p.y, 1, PITCH_H - 1));
+            break;
+          }
+          this.offside.clear();
           this.lastTouch = p;
           if (this.awaitKick && Math.hypot(ball.x - this.awaitKick.x, ball.y - this.awaitKick.y) > 0.5) this.awaitKick = null;
           if (p !== this.passTarget) { this.passTarget = null; this.passT = 0; }
@@ -144,7 +178,24 @@ export class Match {
     } else if (stepBall(ball, dt)) ev.push({ type: 'message', text: 'Off the post!' });
 
     if (!this.restart) this.checkGoalAndOut(ev);
+    // After 45:00 the half ends at the next stoppage.
+    if (this.restart && this.clock >= HALF_GAME_SECONDS && this.restart.kind !== 'penalty') this.endHalf(ev);
     return ev;
+  }
+
+  private endHalf(ev: MatchEvent[]): void {
+    this.period = this.period === 'first half' ? 'half-time' : 'full-time';
+    this.clock = Math.max(this.clock, HALF_GAME_SECONDS);
+    this.breakT = 2.5;
+    this.restart = null; this.awaitKick = null; this.holder = null; this.offside.clear();
+    for (const p of this.players) { p.vx = p.vy = 0; p.buffered = null; p.chargeKind = null; }
+    ev.push({ type: 'whistle', period: this.period }, { type: 'message', text: this.period });
+  }
+
+  /** At the moment of the penalty, the keeper guesses a side and dives. */
+  private diveForPenalty(taker: Player): void {
+    const gk = this.players.find((q) => q.role === 'GK' && q.team !== taker.team);
+    if (gk) gk.vy = (this.rng() < 0.5 ? -1 : 1) * 4.5;
   }
 
   private context(): AIContext {
@@ -152,7 +203,7 @@ export class Match {
     const chasers: [Player | null, Player | null] = [null, null];
     if (!this.restart && !this.holder) {
       for (const team of [0, 1] as const) {
-        const box = Math.abs(ball.x - ownGoalX(team)) < 16.5 && Math.abs(ball.y - CENTRE_Y) < 20.16;
+        const box = inBox(team, ball.x, ball.y);
         let best: Player | null = null, bestT = Infinity;
         for (const p of this.players) {
           if (p.team !== team || p.state === 'down' || (p.role === 'GK' && !box)) continue;
@@ -211,8 +262,7 @@ export class Match {
     const { ball } = this;
     for (const gk of this.players) {
       if (gk.role !== 'GK') continue;
-      const own = ownGoalX(gk.team);
-      if (Math.abs(ball.x - own) > 16.5 || Math.abs(ball.y - CENTRE_Y) > 20.16) continue;
+      if (!inBox(gk.team, ball.x, ball.y)) continue;
       const fromOpponent = this.lastTouch?.team !== gk.team;
       const res = fromOpponent ? keeperSave(gk, ball, this.rng) : null;
       const slowLoose = Math.hypot(ball.x - gk.x, ball.y - gk.y) < 0.9 && ball.z < 2 && Math.hypot(ball.vx, ball.vy) < 8 && !this.carrier;
@@ -232,7 +282,12 @@ export class Match {
     else queueKick(gk, 'lob', 0.8, { x: attackDir(gk.team), y: 0 });
   }
 
-  private foul(on: Player, ev: MatchEvent[]): void {
+  private foul(by: Player, on: Player, ev: MatchEvent[]): void {
+    if (inBox(by.team, on.x, on.y)) {
+      ev.push({ type: 'message', text: 'Penalty!' });
+      this.setRestart('penalty', on.team, ownGoalX(by.team) + attackDir(by.team) * 11, CENTRE_Y, 1.8);
+      return;
+    }
     ev.push({ type: 'message', text: 'Foul!' });
     this.setRestart('free kick', on.team, clamp(on.x, 1, PITCH_W - 1), clamp(on.y, 1, PITCH_H - 1));
   }
@@ -262,17 +317,28 @@ export class Match {
   private setRestart(kind: RestartKind, team: TeamId, x: number, y: number, t = 1.2): void {
     this.restart = { kind, team, x, y, t };
     this.awaitKick = null;
+    this.offside.clear();
     this.passTarget = null; this.holder = null;
   }
 
-  private keepDistance(k: { team: TeamId; x: number; y: number; min: number }): void {
+  private keepDistance(k: NonNullable<Match['awaitKick']>): void {
     for (const o of this.players) {
+      if (k.kind === 'penalty') { this.penaltyPositions(k, o); continue; }
       if (o.team === k.team) continue;
       const dx = o.x - k.x, dy = o.y - k.y, d = Math.hypot(dx, dy);
       if (d >= k.min) continue;
       const n = d > 0 ? norm(dx, dy) : { x: -attackDir(k.team), y: 0 };
       o.x = k.x + n.x * k.min; o.y = k.y + n.y * k.min;
     }
+  }
+
+  /** Penalty: the keeper on his line, everyone else outside the box and the arc. */
+  private penaltyPositions(k: NonNullable<Match['awaitKick']>, o: Player): void {
+    const defending = other(k.team), gx = ownGoalX(defending), dir = attackDir(defending);
+    if (o.role === 'GK' && o.team === defending) { o.x = gx + dir * 0.3; o.y = clamp(o.y, CENTRE_Y - 2.5, CENTRE_Y + 2.5); return; }
+    if (o === this.lastTouch) return; // the taker
+    const edge = gx + dir * 18.5;
+    if ((o.x - edge) * dir < 0 || Math.hypot(o.x - k.x, o.y - k.y) < 9.15) o.x = edge + dir * (0.5 + (o.id % 4));
   }
 
   private takeRestart(): void {
@@ -286,18 +352,19 @@ export class Match {
     }
     Object.assign(ball, createBall(r.x, r.y));
     const team = this.players.filter((p) => p.team === r.team);
-    const taker = r.kind === 'kickoff' ? team.find((p) => p.role === 'FWD')!
+    const taker = r.kind === 'kickoff' || r.kind === 'penalty' ? team.find((p) => p.role === 'FWD')!
       : r.kind === 'goal kick' ? team.find((p) => p.role === 'GK')!
       : team.filter((p) => p.role !== 'GK')
         .sort((a, b) => Math.hypot(a.x - r.x, a.y - r.y) - Math.hypot(b.x - r.x, b.y - r.y))[0];
-    const inField = r.kind === 'kickoff' ? { x: attackDir(r.team), y: 0 } : norm(PITCH_W / 2 - r.x, CENTRE_Y - r.y);
+    const inField = r.kind === 'kickoff' || r.kind === 'penalty' ? { x: attackDir(r.team), y: 0 } : norm(PITCH_W / 2 - r.x, CENTRE_Y - r.y);
     Object.assign(taker, {
       x: r.x - inField.x * 0.6, y: r.y - inField.y * 0.6, vx: 0, vy: 0, fx: inField.x, fy: inField.y,
       state: 'normal', touchCd: 0, aiT: 0.5,
     });
-    this.awaitKick = { team: r.team, x: r.x, y: r.y, min: r.kind === 'kickoff' ? 9.15 : 6 };
-    this.keepDistance(this.awaitKick);
+    this.awaitKick = { team: r.team, x: r.x, y: r.y, min: r.kind === 'kickoff' ? 9.15 : 6, kind: r.kind };
     this.lastTouch = taker;
+    this.keepDistance(this.awaitKick);
     if (r.team === 0) this.controlled = taker.role === 'GK' ? this.controlled : taker;
   }
 }
+

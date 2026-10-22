@@ -1,0 +1,183 @@
+import { BALL_R, CENTRE_Y, GOAL_D, GOAL_H, GOAL_W, PITCH_H, PITCH_W } from '../config';
+import type { Match } from '../sim/match';
+import { CAMS, type CamPoint, Camera, NEAR } from './camera';
+import { type Anim, type FigureStyle, drawFigure } from './figure';
+
+type P3 = [number, number, number?];
+
+const HOME: FigureStyle = { shirt: '#f2c230', shorts: '#15201a', skin: '#e8c7a4', hair: '#2a1c12', boots: '#0d0d0d' };
+const KEEPER: FigureStyle = { ...HOME, shirt: '#4fa3ff' };
+const LINE = 'rgba(233,242,230,0.9)';
+const NET = 'rgba(255,255,255,0.35)';
+
+export interface Overlay { message: string; messageT: number }
+
+export class Renderer {
+  readonly cam = new Camera();
+  private ctx: CanvasRenderingContext2D;
+
+  constructor(private canvas: HTMLCanvasElement) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D is not available');
+    this.ctx = ctx;
+    this.resize();
+    addEventListener('resize', () => this.resize());
+  }
+
+  resize(): void {
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    this.canvas.width = this.canvas.clientWidth * dpr;
+    this.canvas.height = this.canvas.clientHeight * dpr;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  draw(m: Match, anims: { player: Anim; keeper: Anim }, o: Overlay): void {
+    const { ctx, cam } = this;
+    const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
+    const { ball, player, keeper } = m;
+
+    // Camera follows the play and leads slightly towards where the ball is going.
+    const tx = ball.x * 0.6 + player.x * 0.4 + ball.vx * 0.25, ty = ball.y * 0.6 + player.y * 0.4 + ball.vy * 0.1;
+    cam.x += (Math.max(8, Math.min(PITCH_W - 8, tx)) - cam.x) * 0.05;
+    cam.y += (Math.max(16, Math.min(PITCH_H - 6, ty)) - cam.y) * 0.04;
+    cam.update(W, H);
+
+    const sky = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+    sky.addColorStop(0, '#0a1410'); sky.addColorStop(1, '#1b2a22');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    this.poly([[-30, -8], [PITCH_W + 30, -8], [PITCH_W + 30, -8, 9], [-30, -8, 9]], '#26332c'); // far stand
+    this.poly([[-30, -4], [PITCH_W + 30, -4], [PITCH_W + 30, PITCH_H + 40], [-30, PITCH_H + 40]], '#17482a');
+    for (let i = -2; i < 23; i++) { // mown stripes, 5 m wide
+      this.poly([[i * 5, -4], [i * 5 + 5, -4], [i * 5 + 5, PITCH_H + 4], [i * 5, PITCH_H + 4]], i % 2 ? '#1f5a32' : '#236538');
+    }
+    this.poly([[-4, -6], [PITCH_W + 4, -6], [PITCH_W + 4, -6, 1], [-4, -6, 1]], '#c9a227'); // advertising boards
+    this.markings();
+
+    // Flat things on the grass first: shadows and the aim line.
+    for (const s of [player, keeper]) this.shadow(s.x, s.y, 0.45, 0.2, 0.3);
+    this.shadow(ball.x, ball.y, 0.14, 0.07, 0.4 / (1 + ball.z * 0.4));
+    if (player.chargeKind) {
+      const L = 4 + 10 * player.charge;
+      ctx.strokeStyle = 'rgba(242,194,48,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      this.line([[player.x, player.y], [player.x + player.fx * L, player.y + player.fy * L]]);
+      ctx.setLineDash([]);
+    }
+
+    // Upright things, painted far side first so nearer ones overlap.
+    const things: { y: number; draw: () => void }[] = [];
+    for (const side of [0, 1] as const) {
+      things.push({ y: CENTRE_Y - GOAL_W / 2 - 0.01, draw: () => this.goal(side, 'far') });
+      things.push({ y: CENTRE_Y + GOAL_W / 2 + 0.01, draw: () => this.goal(side, 'near') });
+    }
+    things.push({ y: keeper.y, draw: () => drawFigure(ctx, cam, keeper.x, keeper.y, anims.keeper, -1, 0, KEEPER, true) });
+    things.push({ y: player.y, draw: () => drawFigure(ctx, cam, player.x, player.y, anims.player, player.fx, player.fy, HOME) });
+    things.push({ y: ball.y, draw: () => this.ball(m) });
+    things.sort((a, b) => a.y - b.y).forEach((t) => t.draw());
+
+    if (player.chargeKind) {
+      const p = cam.project(player.x, player.y, 2.3), bw = 60;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw, 6);
+      ctx.fillStyle = player.charge > 0.8 ? '#ff6b4a' : '#f2c230'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw * player.charge, 6);
+    }
+    if (o.messageT > 0) {
+      ctx.globalAlpha = Math.min(1, o.messageT * 2);
+      ctx.font = `700 ${Math.min(72, W / 9)}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+      ctx.textAlign = 'center'; ctx.fillStyle = '#f3f6ef'; ctx.fillText(o.message.toUpperCase(), W / 2, H * 0.3);
+      ctx.globalAlpha = 1;
+    }
+    ctx.font = '500 12px "IBM Plex Mono", monospace'; ctx.fillStyle = 'rgba(243,246,239,0.6)';
+    ctx.textAlign = 'right'; ctx.fillText(`Camera: ${CAMS[cam.preset].name} (C / View)`, W - 16, H - 16);
+    ctx.textAlign = 'left';
+  }
+
+  // --- primitives, clipped against the near plane so geometry behind a low camera never folds back ---
+
+  private clipEdge(a: CamPoint, b: CamPoint): CamPoint {
+    const t = (NEAR - a.z) / (b.z - a.z);
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: NEAR };
+  }
+
+  private poly(pts: P3[], fill?: string, stroke?: string): void {
+    const cs = pts.map(([x, y, z]) => this.cam.view(x, y, z ?? 0)), out: CamPoint[] = [];
+    cs.forEach((a, i) => {
+      const b = cs[(i + 1) % cs.length];
+      if (a.z >= NEAR) out.push(a);
+      if (a.z >= NEAR !== b.z >= NEAR) out.push(this.clipEdge(a, b));
+    });
+    if (out.length < 3) return;
+    const { ctx } = this;
+    ctx.beginPath();
+    out.forEach((c, i) => { const p = this.cam.screen(c); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+  }
+
+  private line(pts: P3[]): void {
+    const { ctx, cam } = this;
+    ctx.beginPath();
+    for (let i = 0; i < pts.length - 1; i++) {
+      let a = cam.view(pts[i][0], pts[i][1], pts[i][2] ?? 0), b = cam.view(pts[i + 1][0], pts[i + 1][1], pts[i + 1][2] ?? 0);
+      if (a.z < NEAR && b.z < NEAR) continue;
+      if (a.z < NEAR) a = this.clipEdge(a, b); else if (b.z < NEAR) b = this.clipEdge(a, b);
+      const p = cam.screen(a), q = cam.screen(b);
+      ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+    }
+    ctx.stroke();
+  }
+
+  private arc(cx: number, cy: number, r: number, a0: number, a1: number): void {
+    const pts: P3[] = [];
+    for (let i = 0; i <= 40; i++) { const a = a0 + ((a1 - a0) * i) / 40; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+    this.line(pts);
+  }
+
+  private shadow(x: number, y: number, rx: number, ry: number, alpha: number): void {
+    const p = this.cam.project(x, y);
+    if (p.hidden) return;
+    this.ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    this.ctx.beginPath(); this.ctx.ellipse(p.x, p.y, rx * p.k, ry * p.k, 0, 0, Math.PI * 2); this.ctx.fill();
+  }
+
+  private markings(): void {
+    const { ctx } = this, c = CENTRE_Y;
+    ctx.strokeStyle = LINE; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+    this.line([[0, 0], [PITCH_W, 0], [PITCH_W, PITCH_H], [0, PITCH_H], [0, 0]]);
+    this.line([[PITCH_W / 2, 0], [PITCH_W / 2, PITCH_H]]);
+    this.arc(PITCH_W / 2, c, 9.15, 0, Math.PI * 2);
+    for (const side of [0, 1]) {
+      const gx = side ? PITCH_W : 0, dir = side ? -1 : 1;
+      this.line([[gx, c - 20.16], [gx + dir * 16.5, c - 20.16], [gx + dir * 16.5, c + 20.16], [gx, c + 20.16]]);
+      this.line([[gx, c - 9.16], [gx + dir * 5.5, c - 9.16], [gx + dir * 5.5, c + 9.16], [gx, c + 9.16]]);
+      this.arc(gx + dir * 11, c, 9.15, side ? Math.PI - 0.93 : -0.93, side ? Math.PI + 0.93 : 0.93);
+      this.arc(gx + dir * 11, c, 0.2, 0, Math.PI * 2);
+    }
+  }
+
+  private goal(side: 0 | 1, half: 'far' | 'near'): void {
+    const { ctx } = this;
+    const gx = side ? PITCH_W : 0, back = side ? PITCH_W + GOAL_D : -GOAL_D;
+    const y0 = CENTRE_Y - GOAL_W / 2, y1 = CENTRE_Y + GOAL_W / 2, top = GOAL_H * 0.8;
+    ctx.lineWidth = 1;
+    if (half === 'far') {
+      this.poly([[back, y0, 0], [back, y1, 0], [back, y1, top], [back, y0, top]], 'rgba(255,255,255,0.08)', NET);
+      this.poly([[gx, y0, GOAL_H], [back, y0, top], [back, y1, top], [gx, y1, GOAL_H]], 'rgba(255,255,255,0.06)', NET);
+      this.poly([[gx, y0, 0], [back, y0, 0], [back, y0, top], [gx, y0, GOAL_H]], 'rgba(255,255,255,0.08)', NET);
+      ctx.lineWidth = 4; ctx.strokeStyle = '#ffffff';
+      this.line([[gx, y0, 0], [gx, y0, GOAL_H], [gx, y1, GOAL_H]]);
+    } else {
+      this.poly([[gx, y1, 0], [back, y1, 0], [back, y1, top], [gx, y1, GOAL_H]], 'rgba(255,255,255,0.08)', NET);
+      ctx.lineWidth = 4; ctx.strokeStyle = '#ffffff';
+      this.line([[gx, y1, 0], [gx, y1, GOAL_H]]);
+    }
+    ctx.lineWidth = 2;
+  }
+
+  private ball(m: Match): void {
+    const b = m.ball, p = this.cam.project(b.x, b.y, b.z + BALL_R);
+    if (p.hidden) return;
+    const { ctx } = this;
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(2.5, BALL_R * p.k), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+}

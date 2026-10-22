@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Beautiful Game</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+  </head>
+  <body>
+    <main id="game">
+      <canvas id="pitch" tabindex="0" aria-label="Football pitch"></canvas>
+      <div class="bug"><span>Goals</span><span class="score" id="score">0</span><span class="device" id="device">Keyboard + mouse</span></div>
+      <div class="stats" id="stats"></div>
+      <section class="help" id="help">
+        <h2>Controls</h2>
+        <table>
+          <tr><td>Move</td><td>WASD / arrows · left stick</td></tr>
+          <tr><td>Sprint</td><td>Shift · RT or RB</td></tr>
+          <tr><td>Aim</td><td>Mouse · left stick direction</td></tr>
+          <tr><td>Pass</td><td>Right click or J · A / Cross</td></tr>
+          <tr><td>Shoot</td><td>Left click or K · B / Circle</td></tr>
+          <tr><td>Chip / lob</td><td>E or L · X / Square</td></tr>
+          <tr><td>Camera</td><td>C · View / Share</td></tr>
+        </table>
+        <p>Hold to charge, release to kick. Kicks buffer briefly if the ball is just out of reach.</p>
+        <button id="hide-help" type="button">Hide (H)</button>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

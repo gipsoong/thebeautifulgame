@@ -17,12 +17,14 @@
       </div>
       <section class="menu" id="menu" hidden>
         <h1>The Beautiful Game</h1>
-        <p>You are Home, in yellow. Choose how good the CPU is.</p>
-        <div class="levels" role="radiogroup" aria-label="Difficulty">
+        <p>You are Home, in yellow. Choose your opponent.</p>
+        <div class="levels" role="radiogroup" aria-label="Opponent">
           <button type="button" role="radio" data-level="0">Easy</button>
           <button type="button" role="radio" data-level="1">Normal</button>
           <button type="button" role="radio" data-level="2">Hard</button>
+          <button type="button" role="radio" data-level="3">2 players</button>
         </div>
+        <p class="two-p" id="two-p" hidden>Player 1 on keyboard + mouse, player 2 (blue) on a controller. With two controllers, one each.</p>
         <button class="go" id="kickoff" type="button">Kick off (Enter / A)</button>
         <p class="hint">← → or the left stick to choose</p>
       </section>
@@ -52,6 +54,7 @@
           <tr><td>Slide tackle</td><td>E or L · X / Square</td></tr>
           <tr><td>Camera</td><td>C · View / Share</td></tr>
           <tr><td>Sound</td><td>M</td></tr>
+          <tr><td>2 players</td><td>P1 keyboard + mouse, P2 pad · or two pads</td></tr>
         </table>
         <p>Hold to charge, release to kick. Passes go to the teammate you aim at.</p>
         <button id="hide-help" type="button">Hide (H)</button>

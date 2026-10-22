@@ -1,7 +1,7 @@
 import {
   CENTRE_Y, GK_HOLD_TIME, GOAL_H, GOAL_W, HALF_GAME_SECONDS, HALF_REAL_SECONDS, PITCH_H, PITCH_W, STOPPAGE_GAME_SECONDS,
 } from '../config';
-import type { Actions } from '../input/actions';
+import { type Actions, NO_ACTIONS } from '../input/actions';
 import { clamp, norm } from '../math';
 import { type AIContext, bestPass, intercept, playPass, pressTarget, steer, think } from './ai';
 import { type Ball, createBall, stepBall } from './ball';
@@ -29,7 +29,8 @@ export class Match {
   players: Player[] = [];
   ball: Ball = createBall(PITCH_W / 2, CENTRE_Y);
   score: [number, number] = [0, 0];
-  controlled: Player;
+  /** The player each side's human steers (the AI ignores the side's entry when no human plays it). */
+  controlled: [Player, Player];
   lastTouch: Player | null = null;
   holder: Player | null = null; // keeper holding the ball in his hands
   passTarget: Player | null = null;
@@ -46,10 +47,10 @@ export class Match {
   private sinceKick = 0;
 
   /**
-   * With `humanControlled` false the AI also plays the controlled player (demo mode, tests).
-   * `cpuSkill` sets the difficulty: the skill of the away side, which the CPU always plays.
+   * `humans` is how many sides people play: 0 is AI only (demo mode, tests), 1 is home vs the CPU,
+   * 2 is home vs away on one machine. `cpuSkill` sets the difficulty: the skill of the away side.
    */
-  constructor(private rng: () => number = Math.random, public humanControlled = true, cpuSkill = 1) {
+  constructor(private rng: () => number = Math.random, public humans: 0 | 1 | 2 = 1, cpuSkill = 1) {
     for (const team of [0, 1] as const) {
       FOUR_FOUR_TWO.forEach((s, i) => {
         const p = createPlayer(0, 0, team, s.role, team * FOUR_FOUR_TWO.length + i);
@@ -58,7 +59,8 @@ export class Match {
         this.players.push(p);
       });
     }
-    this.controlled = this.players.find((p) => p.team === 0 && p.role === 'FWD')!;
+    const fwd = (t: TeamId) => this.players.find((p) => p.team === t && p.role === 'FWD')!;
+    this.controlled = [fwd(0), fwd(1)];
     this.setRestart('kickoff', 0, PITCH_W / 2, CENTRE_Y, 0);
   }
 
@@ -79,7 +81,10 @@ export class Match {
 
   get over(): boolean { return this.period === 'full-time'; }
 
-  step(human: Actions, dt: number): MatchEvent[] {
+  /** True when a person plays `team`. */
+  isHuman(team: TeamId): boolean { return team < this.humans; }
+
+  step(home: Actions, dt: number, away: Actions = NO_ACTIONS): MatchEvent[] {
     const ev: MatchEvent[] = [];
     const { ball, rng } = this;
     if (this.over) return ev;
@@ -107,7 +112,7 @@ export class Match {
     const carrier = this.carrier;
     const decisions = new Map<Player, { actions: Actions; tackle: 'stand' | 'slide' | null }>();
     for (const p of this.players) {
-      if (p === this.controlled && this.humanControlled) decisions.set(p, this.humanDecision(p, human, ctx, dt));
+      if (p === this.controlled[p.team] && this.isHuman(p.team)) decisions.set(p, this.humanDecision(p, p.team ? away : home, ctx, dt));
       else if (p === this.holder) decisions.set(p, { actions: steer(p, p), tackle: null });
       else {
         const d = think(p, ctx, dt);
@@ -121,7 +126,7 @@ export class Match {
       const r = p.buffered?.receiver, kind = p.buffered?.kind ?? 'pass';
       const power = tryKick(p, ball, dt, rng);
       if (power === null) continue;
-      ev.push({ type: 'kick', kind, power, player: p, human: p === this.controlled });
+      ev.push({ type: 'kick', kind, power, player: p, human: p === this.controlled[p.team] && this.isHuman(p.team) });
       this.lastTouch = p;
       this.sinceKick = 0;
       // No offside from throw-ins, corners or goal kicks.
@@ -132,7 +137,7 @@ export class Match {
       if (this.holder === p) this.holder = null;
       this.passTarget = r ?? null;
       this.passT = r ? PASS_TIME : 0;
-      if (r && p === this.controlled && r.team === 0) this.controlled = r;
+      if (r && p === this.controlled[p.team] && r.team === p.team) this.controlled[p.team] = r;
     }
     for (const p of this.players) {
       const t = decisions.get(p)!.tackle;
@@ -166,7 +171,7 @@ export class Match {
           this.lastTouch = p;
           if (this.awaitKick && Math.hypot(ball.x - this.awaitKick.x, ball.y - this.awaitKick.y) > 0.5) this.awaitKick = null;
           if (p !== this.passTarget) { this.passTarget = null; this.passT = 0; }
-          if (p.team === 0 && p !== this.controlled) this.controlled = p; // auto-switch to whoever has it
+          this.controlled[p.team] = p; // auto-switch to whoever has it
           break;
         }
       }
@@ -225,19 +230,19 @@ export class Match {
     const { ball } = this;
     if (a.switch && !p.held.switch) {
       const pick = this.players
-        .filter((t) => t.team === 0 && t.role !== 'GK' && t !== p)
+        .filter((t) => t.team === p.team && t.role !== 'GK' && t !== p)
         .sort((x, y) => Math.hypot(x.x - ball.x, x.y - ball.y) - Math.hypot(y.x - ball.x, y.y - ball.y))[0];
-      if (pick) { this.controlled = pick; p.chargeKind = null; p.charge = 0; }
+      if (pick) { this.controlled[p.team] = pick; p.chargeKind = null; p.charge = 0; }
     }
     p.held.switch = a.switch;
 
     const near = Math.hypot(ball.x - p.x, ball.y - p.y) < 2.5;
-    const attacking = this.possession === 0 || (this.possession === null && near) || this.carrier === p;
+    const attacking = this.possession === p.team || (this.possession === null && near) || this.carrier === p;
     if (attacking) {
       updateCharge(p, a, dt);
       const k = p.buffered;
       if (k && !k.receiver && (k.kind === 'pass' || k.kind === 'lob')) { // pass assist
-        const r = pickReceiver(p, k.aim ?? { x: p.fx, y: p.fy }, this.players.filter((t) => t.team === 0));
+        const r = pickReceiver(p, k.aim ?? { x: p.fx, y: p.fy }, this.players.filter((t) => t.team === p.team));
         if (r) {
           const tgt = leadTarget(p, r, k.kind === 'pass' ? 14 : 12);
           const d = Math.hypot(tgt.x - p.x, tgt.y - p.y);
@@ -368,7 +373,7 @@ export class Match {
     this.awaitKick = { team: r.team, x: r.x, y: r.y, min: r.kind === 'kickoff' ? 9.15 : 6, kind: r.kind };
     this.lastTouch = taker;
     this.keepDistance(this.awaitKick);
-    if (r.team === 0) this.controlled = taker.role === 'GK' ? this.controlled : taker;
+    if (taker.role !== 'GK') this.controlled[r.team] = taker;
   }
 }
 

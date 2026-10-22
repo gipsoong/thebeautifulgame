@@ -1,5 +1,5 @@
 import { type Vec2, norm } from '../math';
-import type { Actions } from './actions';
+import { type Actions, NO_ACTIONS } from './actions';
 
 export type Device = 'kbm' | 'pad';
 
@@ -17,8 +17,9 @@ export class Input {
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0, l: false, r: false, lastMove: -Infinity };
   private padIndex: number | null = null;
-  private viewHeld = false;
+  private viewHeld = new Set<number>(); // pad indices with View held, so one press is one camera change
   private pad: Gamepad | null = null;
+  private pads: Gamepad[] = [];
 
   constructor(el: HTMLElement) {
     addEventListener('keydown', (e) => {
@@ -51,9 +52,33 @@ export class Input {
 
   /** `toWorld` maps a screen point to the pitch, so the mouse can aim through the perspective camera. */
   read(playerPos: Vec2, toWorld: (sx: number, sy: number) => Vec2): Actions {
-    const pad = this.readPad();
+    this.pads = this.connectedPads();
+    const gp = this.padIndex !== null ? this.pads.find((p) => p.index === this.padIndex) : this.pads[0];
+    this.pad = gp ?? null;
+    const pad = gp ? this.readPad(gp) : null;
     if (this.device === 'pad' && pad) return pad;
+    return this.readKeyboard(playerPos, toWorld);
+  }
 
+  /**
+   * Two players on one machine. With two pads, one each; otherwise player 1 has the keyboard
+   * and mouse and player 2 the pad.
+   */
+  read2(home: Vec2, toWorld: (sx: number, sy: number) => Vec2): [Actions, Actions] {
+    this.pads = this.connectedPads();
+    const [a, b] = this.pads.map((gp) => this.readPad(gp));
+    if (a && b) return [a, b];
+    return [this.readKeyboard(home, toWorld), a ?? NO_ACTIONS];
+  }
+
+  /** How many controllers are plugged in (and have been pressed once, as browsers require). */
+  get padCount(): number { return this.connectedPads().length; }
+
+  private connectedPads(): Gamepad[] {
+    return (navigator.getGamepads ? navigator.getGamepads() : []).filter((p): p is Gamepad => !!p && p.connected);
+  }
+
+  private readKeyboard(playerPos: Vec2, toWorld: (sx: number, sy: number) => Vec2): Actions {
     const k = this.keys;
     let mx = Number(k.has('KeyD') || k.has('ArrowRight')) - Number(k.has('KeyA') || k.has('ArrowLeft'));
     let my = Number(k.has('KeyS') || k.has('ArrowDown')) - Number(k.has('KeyW') || k.has('ArrowUp'));
@@ -74,20 +99,20 @@ export class Input {
     };
   }
 
-  /** Rumble on the active pad; silently does nothing where unsupported (Firefox, Safari). */
-  rumble(strength: number, ms: number): void {
+  /**
+   * Rumble on the active pad, or in two-player games on that side's pad (0 home, 1 away).
+   * Silently does nothing where unsupported (Firefox, Safari).
+   */
+  rumble(strength: number, ms: number, side?: 0 | 1): void {
+    const pad = side === undefined ? this.pad : this.pads.length > 1 ? this.pads[side] : side === 1 ? this.pads[0] : null;
     try {
-      void this.pad?.vibrationActuator?.playEffect('dual-rumble', {
+      void pad?.vibrationActuator?.playEffect('dual-rumble', {
         duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6,
       });
     } catch { /* optional */ }
   }
 
-  private readPad(): Actions | null {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = this.padIndex !== null ? pads[this.padIndex] : pads.find((p) => p) ?? null;
-    this.pad = gp ?? null;
-    if (!gp) return null;
+  private readPad(gp: Gamepad): Actions {
     let x = gp.axes[0] ?? 0, y = gp.axes[1] ?? 0;
     const mag = Math.hypot(x, y);
     if (mag < DEADZONE) { x = y = 0; } else { // radial deadzone, rescaled so movement starts from zero
@@ -95,8 +120,8 @@ export class Input {
     }
     const b = (i: number) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.3);
     const view = b(BTN.VIEW);
-    if (view && !this.viewHeld) this.onCameraButton();
-    this.viewHeld = view;
+    if (view && !this.viewHeld.has(gp.index)) this.onCameraButton();
+    if (view) this.viewHeld.add(gp.index); else this.viewHeld.delete(gp.index);
     const a: Actions = {
       mx: x, my: y, aim: x || y ? norm(x, y) : null,
       sprint: b(BTN.RT) || b(BTN.RB), pass: b(BTN.A), shoot: b(BTN.B), lob: b(BTN.X), switch: b(BTN.LB),

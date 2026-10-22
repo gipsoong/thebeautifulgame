@@ -18,14 +18,16 @@ const $result = document.querySelector<HTMLElement>('#result')!;
 
 // `#demo` lets the AI play both sides (attract mode, and handy for tuning).
 const demo = location.hash === '#demo';
-const LEVELS = [0.92, 1, 1.06]; // CPU skill for Easy, Normal, Hard
+const LEVELS = [0.92, 1, 1.06, 1]; // CPU skill for Easy, Normal, Hard; the last choice is two players
+const TWO_PLAYER = 3;
+const $twoP = document.querySelector<HTMLElement>('#two-p')!;
 const $menu = document.querySelector<HTMLElement>('#menu')!;
 const $levels = [...document.querySelectorAll<HTMLElement>('[data-level]')];
 let level = 1;
 try { level = Number(localStorage.getItem('tbg-level') ?? 1) || 0; } catch { /* storage blocked */ }
 // The menu sits over an AI-vs-AI match until the player kicks off.
 let inMenu = !demo;
-let match = new Match(Math.random, false);
+let match = new Match(Math.random, 0);
 let anims = new Map<Player, Anim>(match.players.map((p) => [p, createAnim()]));
 const renderer = new Renderer(canvas);
 const input = new Input(canvas);
@@ -42,7 +44,7 @@ function excitement(): number {
 }
 
 function newMatch(): void {
-  match = new Match(Math.random, !demo && !inMenu, LEVELS[level]);
+  match = new Match(Math.random, demo || inMenu ? 0 : level === TWO_PLAYER ? 2 : 1, LEVELS[level]);
   anims = new Map(match.players.map((p) => [p, createAnim()]));
   $fulltime.hidden = true;
   canvas.focus();
@@ -50,6 +52,7 @@ function newMatch(): void {
 function setLevel(l: number): void {
   level = Math.max(0, Math.min(LEVELS.length - 1, l));
   $levels.forEach((b, i) => b.setAttribute('aria-checked', String(i === level)));
+  $twoP.hidden = level !== TWO_PLAYER;
   try { localStorage.setItem('tbg-level', String(level)); } catch { /* storage blocked */ }
 }
 function openMenu(): void { inMenu = true; $menu.hidden = false; newMatch(); }
@@ -85,12 +88,13 @@ let last = performance.now(), acc = 0, overAt = 0, padX = 0, padA = true;
 function frame(now: number): void {
   acc += Math.min(0.1, (now - last) / 1000);
   last = now;
-  const me = match.controlled;
-  const actions = input.read(me, (sx, sy) =>
-    renderer.cam.toWorld(sx, sy) ?? { x: me.x + (sx > canvas.clientWidth / 2 ? 50 : -50), y: me.y - 50 });
+  const me = match.controlled[0];
+  const toWorld = (sx: number, sy: number) =>
+    renderer.cam.toWorld(sx, sy) ?? { x: me.x + (sx > canvas.clientWidth / 2 ? 50 : -50), y: me.y - 50 };
+  const [actions, away] = match.humans === 2 ? input.read2(me, toWorld) : [input.read(me, toWorld), undefined];
 
   while (acc >= DT) { // fixed 120 Hz simulation, decoupled from the display refresh rate
-    for (const e of match.step(actions, DT)) {
+    for (const e of match.step(actions, DT, away)) {
       if (e.type === 'message') {
         overlay.message = e.text; overlay.messageT = 1.4;
         if (e.text === 'Off the post!') sound.post();
@@ -101,7 +105,7 @@ function frame(now: number): void {
       if (e.type === 'kick') {
         sound.kick(e.power);
         startKick(anims.get(e.player)!, e.power);
-        if (e.human) input.rumble(0.3 + 0.6 * e.power, 60 + 80 * e.power);
+        if (e.human) input.rumble(0.3 + 0.6 * e.power, 60 + 80 * e.power, match.humans === 2 ? e.player.team : undefined);
       }
     }
     for (const p of match.players) {
@@ -136,7 +140,7 @@ function frame(now: number): void {
   $clock.textContent = match.period === 'half-time' ? 'HT' : match.period === 'full-time' ? 'FT' : `${mins}:${String(secs).padStart(2, '0')}`;
   $home.textContent = String(match.score[0]);
   $away.textContent = String(match.score[1]);
-  $device.textContent = input.device === 'pad' ? 'Controller' : 'Keyboard + mouse';
+  $device.textContent = match.humans === 2 ? '2 players' : input.device === 'pad' ? 'Controller' : 'Keyboard + mouse';
   renderer.draw(match, anims, overlay);
   requestAnimationFrame(frame);
 }

@@ -1,8 +1,8 @@
-import { CENTRE_Y, GK_SPEED, GOAL_W, PITCH_H, PITCH_W, SPRINT } from '../config';
+import { BOUNCE, CENTRE_Y, G, GK_SPEED, GOAL_W, PITCH_H, PITCH_W, SPRINT } from '../config';
 import { NO_ACTIONS, type Actions } from '../input/actions';
 import { type Vec2, clamp, norm } from '../math';
 import type { Ball } from './ball';
-import { leadTarget, lobPowerFor, passPowerFor } from './kick';
+import { leadTarget, lobPowerFor, passPowerFor, passSpeedFor } from './kick';
 import { keeperTarget, shotCrossingY } from './keeper';
 import { type Player, queueKick } from './player';
 import { offsidePlayers } from './rules';
@@ -40,12 +40,18 @@ export function steer(p: Player, to: Vec2, sprintBeyond = 6, ease = true): Actio
 /** Roughly where and when this player can first reach the moving ball. */
 export function intercept(p: Player, ball: Ball): { at: Vec2; t: number } {
   const speed = p.role === 'GK' ? GK_SPEED : SPRINT;
-  let bx = ball.x, by = ball.y, vx = ball.vx, vy = ball.vy;
+  let bx = ball.x, by = ball.y, bz = ball.z, vx = ball.vx, vy = ball.vy, vz = ball.vz;
   for (let t = 0; t < 3; t += 0.1) {
-    if (Math.hypot(bx - p.x, by - p.y) <= speed * t + 0.6) return { at: { x: bx, y: by }, t };
+    // Only a ball low enough to head or chest down can be met; a lob is met where it comes down.
+    if (bz < 2.2 && Math.hypot(bx - p.x, by - p.y) <= speed * t + 0.6) return { at: { x: bx, y: by }, t };
     bx += vx * 0.1; by += vy * 0.1;
-    const s = Math.hypot(vx, vy), ns = Math.max(0, s - 0.24);
-    if (s > 0) { vx *= ns / s; vy *= ns / s; }
+    if (bz > 0 || vz > 0) { // rough flight: gravity and a damped bounce, no drag
+      bz += vz * 0.1; vz -= G * 0.1;
+      if (bz <= 0) { bz = 0; vz = vz < -1.2 ? -vz * BOUNCE : 0; }
+    } else {
+      const s = Math.hypot(vx, vy), ns = Math.max(0, s - 0.24);
+      if (s > 0) { vx *= ns / s; vy *= ns / s; }
+    }
   }
   return { at: { x: bx, y: by }, t: 3 + Math.hypot(bx - p.x, by - p.y) / speed };
 }
@@ -144,12 +150,26 @@ function keeperDistribute(gk: Player, ctx: AIContext): Decision {
   return decide({ ...NO_ACTIONS });
 }
 
-interface PassOption { r: Player; score: number; dist: number; open: number; gain: number }
+/** Lane margin (m) below which a ground pass is not tried: slightly negative, as players do risk it. */
+const RISKY = -0.5;
+
+interface PassOption { r: Player; to: Vec2; score: number; dist: number; open: number; gain: number }
 
 function segmentDist(p: Vec2, a: Vec2, b: Vec2): number {
   const abx = b.x - a.x, aby = b.y - a.y, l2 = abx * abx + aby * aby || 1;
   const t = clamp(((p.x - a.x) * abx + (p.y - a.y) * aby) / l2, 0, 1);
   return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
+}
+
+/**
+ * How far an opponent is from being able to cut out a ground pass from `a` to `b`, in metres:
+ * his distance from the lane minus the ground he can cover before the ball gets there.
+ */
+function laneMargin(o: Vec2, a: Vec2, b: Vec2, ballSpeed: number): number {
+  const abx = b.x - a.x, aby = b.y - a.y, l2 = abx * abx + aby * aby || 1;
+  const u = clamp(((o.x - a.x) * abx + (o.y - a.y) * aby) / l2, 0, 1);
+  const t = (u * Math.sqrt(l2)) / ballSpeed;
+  return Math.hypot(o.x - (a.x + abx * u), o.y - (a.y + aby * u)) - (0.45 * SPRINT * Math.max(0, t - 0.35) + 0.7);
 }
 
 /** Scores every teammate: forward progress, a clear lane and space around him. */
@@ -160,26 +180,31 @@ export function bestPass(p: Player, ctx: AIContext, allowKeeper = false): PassOp
   const offside = offsidePlayers(p, ctx.players, ctx.ball);
   for (const t of ctx.players) {
     if (t === p || t.team !== p.team || t.state === 'down' || (t.role === 'GK' && !allowKeeper) || offside.has(t)) continue;
-    const dist = Math.hypot(t.x - p.x, t.y - p.y);
+    // Judge the pass where it will actually go: into the runner's path.
+    const to = leadTarget(p, t, passSpeedFor(Math.hypot(t.x - p.x, t.y - p.y)));
+    const dist = Math.hypot(to.x - p.x, to.y - p.y);
     if (dist < 5 || dist > 45) continue;
     let open = 6, marked = 6;
+    const speed = passSpeedFor(dist);
     for (const o of opps) {
-      open = Math.min(open, segmentDist(o, p, t));
-      marked = Math.min(marked, Math.hypot(o.x - t.x, o.y - t.y));
+      open = Math.min(open, laneMargin(o, p, to, speed));
+      marked = Math.min(marked, Math.hypot(o.x - to.x, o.y - to.y));
     }
-    const gain = (t.x - p.x) * dir; // metres of progress towards goal
-    const toGoal = Math.hypot(oppGoalX(p.team) - t.x, CENTRE_Y - t.y);
-    const score = gain * 0.1 + Math.min(open, 4) * 0.25 + marked * 0.2 - dist * 0.02 + Math.max(0, 35 - toGoal) * 0.04;
-    if (open > 1.2 && (!best || score > best.score)) best = { r: t, score, dist, open, gain };
+    // A blocked lane is only an option when the ball can go over it to a free man.
+    if (open <= RISKY && (dist < 18 || marked < 3)) continue;
+    const gain = (to.x - p.x) * dir; // metres of progress towards goal
+    const toGoal = Math.hypot(oppGoalX(p.team) - to.x, CENTRE_Y - to.y);
+    const score = gain * 0.1 + (open > RISKY ? Math.min(open, 3) * 0.3 : -0.6) + marked * 0.2 - dist * 0.02 + Math.max(0, 35 - toGoal) * 0.04;
+    if (!best || score > best.score) best = { r: t, to, score, dist, open, gain };
   }
   return best;
 }
 
 /** Plays the pass to `o`: along the ground if the lane is clear, chipped if it is long and blocked. */
 export function playPass(p: Player, o: PassOption): void {
-  const tgt = leadTarget(p, o.r, 14);
+  const tgt = o.to;
   const d = Math.hypot(tgt.x - p.x, tgt.y - p.y), aim = norm(tgt.x - p.x, tgt.y - p.y);
-  if (d > 25 && o.open < 2.5) queueKick(p, 'lob', lobPowerFor(d), aim);
+  if (o.open <= RISKY) queueKick(p, 'lob', lobPowerFor(d), aim);
   else queueKick(p, 'pass', passPowerFor(d), aim);
 }
 

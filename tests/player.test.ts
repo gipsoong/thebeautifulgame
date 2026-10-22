@@ -37,3 +37,26 @@ describe('player movement', () => {
     expect(ball.vx).toBeGreaterThan(p.vx);
   });
 });
+
+describe('aerial balls', () => {
+  it('chests down a dropping ball instead of letting it pass through', () => {
+    const p = createPlayer(50, 34), ball = createBall(50.3, 34);
+    Object.assign(ball, { z: 1.1, vx: -9, vz: -3 });
+    expect(touchBall(p, ball, false)).toBe(true);
+    expect(Math.abs(ball.vx)).toBeLessThan(2);
+    expect(ball.vz).toBeLessThanOrEqual(0);
+  });
+
+  it('heads a ball at head height towards the given target', () => {
+    const p = createPlayer(50, 34), ball = createBall(50.2, 34);
+    Object.assign(ball, { z: 1.9, vx: -12, vz: -1 });
+    expect(touchBall(p, ball, false, { x: 1, y: 0 })).toBe(true);
+    expect(ball.vx).toBeGreaterThan(5);
+  });
+
+  it('cannot reach a ball over its head', () => {
+    const p = createPlayer(50, 34), ball = createBall(50.2, 34);
+    Object.assign(ball, { z: 3, vx: -12 });
+    expect(touchBall(p, ball, false)).toBe(false);
+  });
+});

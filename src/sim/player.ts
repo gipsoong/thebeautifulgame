@@ -1,5 +1,6 @@
 import {
-  ACCEL, CHARGE_TIME, DECEL, DOWN_TIME, DRIBBLE_FACTOR, GK_SPEED, JOG, KICK_BUFFER, PITCH_H, PITCH_W, REACH, SPRINT,
+  ACCEL, CHARGE_TIME, DECEL, DOWN_TIME, DRIBBLE_FACTOR, GK_SPEED, HEAD_HEIGHT, JOG, KICK_BUFFER, PITCH_H, PITCH_W, REACH,
+  SPRINT,
 } from '../config';
 import type { Actions } from '../input/actions';
 import type { Vec2 } from '../math';
@@ -115,11 +116,30 @@ function move(p: Player, dt: number): void {
  * Dribble touches: the ball is knocked ahead rather than glued to the foot.
  * Returns true if this player touched the ball.
  */
-export function touchBall(p: Player, ball: Ball, sprinting: boolean): boolean {
+/**
+ * Ball contact without a kick. On the ground it is a dribble touch or a trap; in the air,
+ * a chest or thigh cushion drops it to the feet, and at head height it is headed towards `headTo`.
+ */
+export function touchBall(p: Player, ball: Ball, sprinting: boolean, headTo?: Vec2): boolean {
   if (p.state !== 'normal' || p.touchCd > 0 || p.buffered) return false;
   const bx = ball.x - p.x, by = ball.y - p.y, d = Math.hypot(bx, by);
-  if (d >= REACH || ball.z >= 0.4) return false;
   const sp = Math.hypot(p.vx, p.vy), relV = Math.hypot(ball.vx - p.vx, ball.vy - p.vy);
+  if (ball.z >= 0.4) {
+    if (d >= 0.65 || ball.z > HEAD_HEIGHT) return false;
+    if (ball.z < 1.5) { // chest / thigh: soak up the pace and let it drop
+      if (relV > 18) return false; // too hot: it flies past
+      ball.vx = p.vx + (ball.vx - p.vx) * 0.12; ball.vy = p.vy + (ball.vy - p.vy) * 0.12;
+      ball.vz = Math.min(0, ball.vz) * 0.2;
+      p.touchCd = 0.25;
+      return true;
+    }
+    const dir = headTo ?? { x: p.fx, y: p.fy };
+    const v = Math.min(15, 6 + 0.3 * Math.hypot(ball.vx, ball.vy, ball.vz));
+    ball.vx = dir.x * v; ball.vy = dir.y * v; ball.vz = headTo ? 1.2 : 3; ball.spin = 0;
+    p.touchCd = 0.4;
+    return true;
+  }
+  if (d >= REACH) return false;
   if (sp > 0.8) {
     const push = sprinting ? 1.55 : 1.3; // sprinting = longer, riskier touches
     ball.vx = p.fx * sp * push; ball.vy = p.fy * sp * push;

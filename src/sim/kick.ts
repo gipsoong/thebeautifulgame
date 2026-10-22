@@ -4,10 +4,16 @@ import type { Ball } from './ball';
 import type { Player } from './player';
 
 /** Pass power (0..1) that gets a ground pass to `dist` metres arriving at a controllable pace. */
+const PASS_ARRIVE = 10, PASS_DECEL = 2.4; // m/s on arrival, rough average rolling deceleration
+
 export function passPowerFor(dist: number): number {
-  const arrive = 7, decel = 2.4; // m/s on arrival, rough average rolling deceleration
-  const v0 = Math.sqrt(arrive * arrive + 2 * decel * dist);
+  const v0 = Math.sqrt(PASS_ARRIVE * PASS_ARRIVE + 2 * PASS_DECEL * dist);
   return clamp((v0 - 8) / 16, 0.05, 1);
+}
+
+/** Average speed of a ground pass struck with `passPowerFor(dist)`. */
+export function passSpeedFor(dist: number): number {
+  return (Math.sqrt(PASS_ARRIVE * PASS_ARRIVE + 2 * PASS_DECEL * dist) + PASS_ARRIVE) / 2;
 }
 
 /**

@@ -26,6 +26,7 @@ export const DRIBBLE_FACTOR = 0.9;
 export const ACCEL = 16; // m/s^2
 export const DECEL = 22; // m/s^2, braking is quicker than accelerating
 export const REACH = 0.75; // dribble touch distance
+export const HEAD_HEIGHT = 2.3; // highest ball a jumping player can head
 export const KICK_REACH = 1.1;
 export const KICK_BUFFER = 0.35; // s a released kick waits for the ball to come into reach
 export const CHARGE_TIME = 0.9; // s to full power

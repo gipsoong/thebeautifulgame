@@ -11,9 +11,12 @@
   <body>
     <main id="game">
       <canvas id="pitch" tabindex="0" aria-label="Football pitch"></canvas>
-      <div class="bug"><span>Goals</span><span class="score" id="score">0</span><span class="device" id="device">Keyboard + mouse</span></div>
-      <div class="stats" id="stats"></div>
-      <section class="help" id="help">
+      <div class="bug">
+        <span class="team home">Home</span><span class="score" id="score-home">0</span><span class="score" id="score-away">0</span><span class="team away">Away</span>
+        <span class="device" id="device">Keyboard + mouse</span>
+      </div>
+      <button class="help-toggle" id="show-help" type="button">Controls (H)</button>
+      <section class="help" id="help" hidden>
         <h2>Controls</h2>
         <table>
           <tr><td>Move</td><td>WASD / arrows · left stick</td></tr>
@@ -22,9 +25,14 @@
           <tr><td>Pass</td><td>Right click or J · A / Cross</td></tr>
           <tr><td>Shoot</td><td>Left click or K · B / Circle</td></tr>
           <tr><td>Chip / lob</td><td>E or L · X / Square</td></tr>
+          <tr><td>Switch player</td><td>Q or Space · LB / L1</td></tr>
+          <tr><th colspan="2">Without the ball</th></tr>
+          <tr><td>Press</td><td>Hold right click or J · A / Cross</td></tr>
+          <tr><td>Tackle</td><td>Left click or K · B / Circle</td></tr>
+          <tr><td>Slide tackle</td><td>E or L · X / Square</td></tr>
           <tr><td>Camera</td><td>C · View / Share</td></tr>
         </table>
-        <p>Hold to charge, release to kick. Kicks buffer briefly if the ball is just out of reach.</p>
+        <p>Hold to charge, release to kick. Passes go to the teammate you aim at.</p>
         <button id="hide-help" type="button">Hide (H)</button>
       </section>
     </main>

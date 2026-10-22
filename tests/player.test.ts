@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DT, JOG, SPRINT } from '../src/config';
 import { NO_ACTIONS } from '../src/input/actions';
 import { createBall } from '../src/sim/ball';
-import { createPlayer, stepPlayer } from '../src/sim/player';
+import { createPlayer, stepPlayer, touchBall } from '../src/sim/player';
 
 const farBall = () => createBall(0, 0);
 
@@ -26,7 +26,7 @@ describe('player movement', () => {
 
   it('knocks the ball ahead when dribbling instead of carrying it', () => {
     const p = createPlayer(50, 34), ball = createBall(52, 34), a = { ...NO_ACTIONS, mx: 1 };
-    for (let t = 0; t < 1.5; t += DT) stepPlayer(p, ball, a, DT);
+    for (let t = 0; t < 1.5; t += DT) { stepPlayer(p, ball, a, DT); touchBall(p, ball, false); }
     expect(ball.vx).toBeGreaterThan(p.vx);
   });
 });

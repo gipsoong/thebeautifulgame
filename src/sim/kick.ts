@@ -1,4 +1,8 @@
-import { KICK_REACH, SPRINT } from '../config';
+import { CENTRE_Y, KICK_REACH, SPRINT } from '../config';
+import { oppGoalX } from './team';
+
+/** Shot power below which a shot is placed and curled rather than driven. */
+export const FINESSE = 0.55;
 import { type Vec2, clamp, gauss, norm } from '../math';
 import type { Ball } from './ball';
 import type { Player } from './player';
@@ -53,7 +57,19 @@ export function tryKick(p: Player, ball: Ball, dt: number, rng: () => number = M
   const pw = k.power, speed = Math.hypot(p.vx, p.vy);
   // Inaccuracy grows with power, running speed and how far the ball is from the sweet spot.
   const err = (0.015 + 0.07 * pw * pw + (0.025 * speed) / SPRINT + 0.04 * Math.max(0, d - 0.6)) * gauss(rng) / p.skill ** 3;
-  const a = Math.atan2(dir.y, dir.x) + err;
+  let a = Math.atan2(dir.y, dir.x) + err;
+  // A softer shot is a placed, curled one: it starts outside the target and bends back in.
+  let curl = 0;
+  if (k.kind === 'shoot' && pw < FINESSE) {
+    const gx = oppGoalX(p.team), dist = Math.abs(gx - ball.x);
+    if (dist > 4 && dir.x * (gx - ball.x) > 0) {
+      const theta = (0.4 + 0.6 * (FINESSE - pw) / FINESSE) * Math.min(0.14, 2.5 / dist);
+      const yAt = (ang: number) => ball.y + Math.tan(ang) * (gx - ball.x);
+      const side = Math.abs(yAt(a + theta) - CENTRE_Y) > Math.abs(yAt(a - theta) - CENTRE_Y) ? 1 : -1;
+      a += side * theta;
+      curl = -side * Math.min(6, theta / (0.0018 * dist));
+    }
+  }
   let v: number, vz: number;
   switch (k.kind) {
     case 'pass': v = 8 + 16 * pw; vz = 0.4 * pw; break;
@@ -64,7 +80,7 @@ export function tryKick(p: Player, ball: Ball, dt: number, rng: () => number = M
   ball.vy = Math.sin(a) * v + p.vy * 0.3;
   ball.vz = vz;
   ball.z = Math.max(ball.z, 0.01);
-  ball.spin = (k.kind === 'shoot' ? gauss(rng) * 0.8 : 0) * pw; // slight random swerve on hard shots
+  ball.spin = curl + (k.kind === 'shoot' ? gauss(rng) * 0.8 : 0) * pw; // plus a slight random swerve on hard shots
   p.fx = dir.x; p.fy = dir.y;
   p.touchCd = 0.35;
   p.buffered = null;

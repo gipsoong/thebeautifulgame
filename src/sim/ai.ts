@@ -1,4 +1,4 @@
-import { BOUNCE, CENTRE_Y, G, GK_SPEED, GOAL_W, PITCH_H, PITCH_W, SPRINT } from '../config';
+import { BOUNCE, CENTRE_Y, G, GK_SPEED, GOAL_W, JOG, PITCH_H, PITCH_W, SPRINT } from '../config';
 import { NO_ACTIONS, type Actions } from '../input/actions';
 import { type Vec2, clamp, norm } from '../math';
 import type { Ball } from './ball';
@@ -37,6 +37,12 @@ export function steer(p: Player, to: Vec2, sprintBeyond = 6, ease = true): Actio
   // Getting back into shape is not worth emptying the tank for; chasing the ball is.
   const sprint = d > sprintBeyond && (sprintBeyond < 6 || p.stamina > 0.5);
   return { ...NO_ACTIONS, mx: (dx / d) * m, my: (dy / d) * m, sprint };
+}
+
+/** Keeps running the way he is already going. */
+function carryOn(p: Player): Actions {
+  const v = Math.hypot(p.vx, p.vy);
+  return v < 0.3 ? { ...NO_ACTIONS } : { ...NO_ACTIONS, mx: p.vx / v, my: p.vy / v, sprint: v > JOG + 0.5 };
 }
 
 /** Roughly where and when this player can first reach the moving ball. */
@@ -88,6 +94,8 @@ export function think(p: Player, ctx: AIContext, dt: number): Decision {
   if (ctx.passTarget === p) return decide(steer(p, intercept(p, ball).at, 3, false));
   if (ctx.chasers[p.team] === p && ctx.possession !== p.team) {
     if (carrier && carrier.team !== p.team) return pressBrain(p, carrier, ctx);
+    // A defender reads a pass only once it is struck: for a moment he carries on as he was.
+    if (ctx.passTarget && ctx.passTarget.team !== p.team && ctx.sinceKick < 0.3 / p.skill) return decide(carryOn(p));
     return decide(steer(p, intercept(p, ball).at, 2, false));
   }
   if (p.role === 'FWD' && ctx.possession === p.team) return decide(forwardRun(p, ctx, dt));

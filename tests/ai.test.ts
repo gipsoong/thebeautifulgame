@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type AIContext, getOpen } from '../src/sim/ai';
+import { type AIContext, getOpen, think } from '../src/sim/ai';
 import { createBall } from '../src/sim/ball';
 import { createPlayer } from '../src/sim/player';
 
@@ -24,5 +24,17 @@ describe('ai', () => {
   it('stays put when nobody is near', () => {
     const carrier = createPlayer(40, 34, 0), mate = createPlayer(60, 20, 0), far = createPlayer(80, 60, 1);
     expect(getOpen(mate, { x: 60, y: 20 }, carrier, ctxWith([carrier, mate, far]))).toEqual({ x: 60, y: 20 });
+  });
+
+  it('a defender only reacts to a pass a moment after it is struck', () => {
+    const receiver = createPlayer(50, 40, 0), defender = createPlayer(50, 30, 1);
+    defender.vx = -4; // jogging back
+    const ball = createBall(45, 34); ball.vx = 12;
+    const ctx = (sinceKick: number): AIContext => ({
+      ball, players: [receiver, defender], possession: null, carrier: null, chasers: [receiver, defender],
+      passTarget: receiver, sinceKick, rng: () => 0.5,
+    });
+    expect(think(defender, ctx(0.1), 0).actions.my).toBe(0); // still running the way he was
+    expect(think(defender, ctx(0.5), 0).actions.my).toBeGreaterThan(0.5); // now across to the ball
   });
 });

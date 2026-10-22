@@ -4,6 +4,7 @@ import { Sound } from './audio/sound';
 import { Input } from './input/input';
 import { type Anim, createAnim, startKick, stepAnim } from './render/figure';
 import { Renderer } from './render/renderer';
+import { Replay } from './replay';
 import { Match } from './sim/match';
 import type { Player } from './sim/player';
 
@@ -46,6 +47,7 @@ function excitement(): number {
 function newMatch(): void {
   match = new Match(Math.random, demo || inMenu ? 0 : level === TWO_PLAYER ? 2 : 1, LEVELS[level]);
   anims = new Map(match.players.map((p) => [p, createAnim()]));
+  replay.stop(match); replay.clear(); replayIn = 0;
   $fulltime.hidden = true;
   canvas.focus();
 }
@@ -75,11 +77,15 @@ document.querySelector('#resume')!.addEventListener('click', () => setPaused(fal
 document.querySelector('#quit')!.addEventListener('click', openMenu);
 input.onPauseButton = () => setPaused(!paused);
 addEventListener('blur', () => setPaused(true)); // tabbing away stops the clock
-const overlay = { message: '', messageT: 0 };
+const overlay = { message: '', messageT: 0, replay: false };
+const replay = new Replay();
+let replayIn = 0; // sim seconds until the goal replay starts
+const skipReplay = () => { if (replay.playing) replay.stop(match); };
 
 input.onCameraButton = () => renderer.cam.cycle();
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') renderer.cam.cycle();
+  if (replay.playing && (e.code === 'Enter' || e.code === 'Space')) { skipReplay(); return; }
   if (inMenu) {
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') setLevel(level - 1);
     if (e.code === 'ArrowRight' || e.code === 'KeyD') setLevel(level + 1);
@@ -102,9 +108,10 @@ const setHelp = (open: boolean) => { $help.hidden = !open; $showHelp.hidden = op
 document.querySelector('#hide-help')!.addEventListener('click', () => setHelp(false));
 $showHelp.addEventListener('click', () => setHelp(true));
 
-let last = performance.now(), acc = 0, overAt = 0, padX = 0, padA = true;
+let last = performance.now(), acc = 0, overAt = 0, padX = 0, padA = true, skipHeld = true;
 function frame(now: number): void {
-  acc += Math.min(0.1, (now - last) / 1000);
+  const elapsed = Math.min(0.1, (now - last) / 1000);
+  acc += elapsed;
   last = now;
   const me = match.controlled[0];
   const toWorld = (sx: number, sy: number) =>
@@ -114,7 +121,15 @@ function frame(now: number): void {
   if (paused) {
     acc = 0;
     if (input.device === 'pad' && actions.shoot) openMenu(); // B / Circle
+  } else if (replay.playing) { // the match stays frozen while the goal is shown again
+    acc = 0;
+    if (actions.pass && !skipHeld) skipReplay();
+    if (replay.step(match, elapsed)) {
+      for (const p of match.players) stepAnim(anims.get(p)!, p.vx, p.vy, p.fx, p.fy, elapsed * 0.6, 0);
+    }
   }
+  skipHeld = actions.pass;
+  overlay.replay = replay.playing;
   while (acc >= DT) { // fixed 120 Hz simulation, decoupled from the display refresh rate
     for (const e of match.step(actions, DT, away)) {
       if (e.type === 'message') {
@@ -122,7 +137,7 @@ function frame(now: number): void {
         if (e.text === 'Off the post!') sound.post();
         if (e.text === 'Foul!' || e.text === 'Offside' || e.text === 'Penalty!') sound.whistle('short');
       }
-      if (e.type === 'goal') { sound.goal(); sound.whistle('short'); }
+      if (e.type === 'goal') { sound.goal(); sound.whistle('short'); replayIn = 1.2; }
       if (e.type === 'whistle') sound.whistle(e.period === 'full-time' ? 'end' : e.period === 'half-time' ? 'long' : 'short');
       if (e.type === 'kick') {
         sound.kick(e.power);
@@ -137,6 +152,8 @@ function frame(now: number): void {
     overlay.messageT = Math.max(0, overlay.messageT - DT);
     sound.setExcitement(excitement(), DT);
     acc -= DT;
+    if (replayIn > 0 && (replayIn -= DT) <= 0) { replay.start(match); overlay.messageT = 0; break; }
+    replay.record(match);
   }
 
   if (input.device === 'pad') { // menu navigation on the pad: stick to choose, A to start

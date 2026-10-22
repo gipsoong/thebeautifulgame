@@ -238,7 +238,8 @@ function carrierBrain(p: Player, ctx: AIContext, dt: number): Decision {
       const blocked = opps.some((o) => o.role !== 'GK' && segmentDist(o, p, { x: gx, y: ty }) < 1.2);
       const chance = (dGoal < 16 ? 0.9 : dGoal < 22 ? 0.6 : 0.3) * (blocked ? 0.4 : 1);
       if (rng() < chance) {
-        queueKick(p, 'shoot', clamp(0.45 + dGoal / 45, 0.45, 0.95), norm(gx - p.x, ty - p.y));
+        const placed = dGoal < 20 && rng() < 0.5; // pass it into the corner rather than blast it
+        queueKick(p, 'shoot', placed ? 0.3 + rng() * 0.15 : clamp(0.45 + dGoal / 45, 0.45, 0.95), norm(gx - p.x, ty - p.y));
         return decide(approach(p, ctx.ball));
       }
     }

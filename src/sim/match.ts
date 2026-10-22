@@ -45,12 +45,16 @@ export class Match {
   private passT = 0;
   private sinceKick = 0;
 
-  /** With `humanControlled` false the AI also plays the controlled player (demo mode, tests). */
-  constructor(private rng: () => number = Math.random, public humanControlled = true) {
+  /**
+   * With `humanControlled` false the AI also plays the controlled player (demo mode, tests).
+   * `cpuSkill` sets the difficulty: the skill of the away side, which the CPU always plays.
+   */
+  constructor(private rng: () => number = Math.random, public humanControlled = true, cpuSkill = 1) {
     for (const team of [0, 1] as const) {
       FOUR_FOUR_TWO.forEach((s, i) => {
         const p = createPlayer(0, 0, team, s.role, team * FOUR_FOUR_TWO.length + i);
         p.slot = { x: s.x, y: s.y };
+        if (team === 1) p.skill = cpuSkill;
         this.players.push(p);
       });
     }

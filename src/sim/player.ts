@@ -35,6 +35,7 @@ export interface Player {
   dribbleSide: 1 | -1; // which way the AI takes a defender on, kept between decisions
   pressedT: number; // how long the AI carrier has been under pressure
   runT: number; // time left on a forward run in behind
+  skill: number; // 1 is the baseline; scales top speed, kick accuracy and keeper reactions
 }
 
 export function createPlayer(x: number, y: number, team: TeamId = 0, role: Role = 'MID', id = 0): Player {
@@ -42,7 +43,7 @@ export function createPlayer(x: number, y: number, team: TeamId = 0, role: Role 
     id, team, role, slot: { x: 0.5, y: 0.5 },
     x, y, vx: 0, vy: 0, fx: team === 0 ? 1 : -1, fy: 0, touchCd: 0, charge: 0, chargeKind: null, buffered: null,
     held: { pass: false, shoot: false, lob: false, switch: false },
-    state: 'normal', stateT: 0, tackleCd: 0, aiT: 0, dribbleSide: id % 2 ? 1 : -1, pressedT: 0, runT: 0,
+    state: 'normal', stateT: 0, tackleCd: 0, aiT: 0, dribbleSide: id % 2 ? 1 : -1, pressedT: 0, runT: 0, skill: 1,
   };
 }
 
@@ -91,7 +92,7 @@ export function stepPlayer(p: Player, ball: Ball, a: Actions, dt: number): void 
   const sprint = a.sprint && moving;
   const hasBall = Math.hypot(ball.x - p.x, ball.y - p.y) < 1.2 && ball.z < 0.5;
   const base = p.role === 'GK' ? GK_SPEED : sprint ? SPRINT : JOG;
-  const top = base * (hasBall ? DRIBBLE_FACTOR : 1) * (p.chargeKind ? 0.75 : 1);
+  const top = base * p.skill * (hasBall ? DRIBBLE_FACTOR : 1) * (p.chargeKind ? 0.75 : 1);
   const tx = a.mx * top, ty = a.my * top;
   const dx = tx - p.vx, dy = ty - p.vy, dm = Math.hypot(dx, dy);
   // Turning at speed means shedding velocity first: that is the momentum.

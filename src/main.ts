@@ -18,7 +18,14 @@ const $result = document.querySelector<HTMLElement>('#result')!;
 
 // `#demo` lets the AI play both sides (attract mode, and handy for tuning).
 const demo = location.hash === '#demo';
-let match = new Match(Math.random, !demo);
+const LEVELS = [0.92, 1, 1.06]; // CPU skill for Easy, Normal, Hard
+const $menu = document.querySelector<HTMLElement>('#menu')!;
+const $levels = [...document.querySelectorAll<HTMLElement>('[data-level]')];
+let level = 1;
+try { level = Number(localStorage.getItem('tbg-level') ?? 1) || 0; } catch { /* storage blocked */ }
+// The menu sits over an AI-vs-AI match until the player kicks off.
+let inMenu = !demo;
+let match = new Match(Math.random, false);
 let anims = new Map<Player, Anim>(match.players.map((p) => [p, createAnim()]));
 const renderer = new Renderer(canvas);
 const input = new Input(canvas);
@@ -35,18 +42,37 @@ function excitement(): number {
 }
 
 function newMatch(): void {
-  match = new Match(Math.random, !demo);
+  match = new Match(Math.random, !demo && !inMenu, LEVELS[level]);
   anims = new Map(match.players.map((p) => [p, createAnim()]));
   $fulltime.hidden = true;
   canvas.focus();
 }
+function setLevel(l: number): void {
+  level = Math.max(0, Math.min(LEVELS.length - 1, l));
+  $levels.forEach((b, i) => b.setAttribute('aria-checked', String(i === level)));
+  try { localStorage.setItem('tbg-level', String(level)); } catch { /* storage blocked */ }
+}
+function openMenu(): void { inMenu = true; $menu.hidden = false; newMatch(); }
+function kickOff(): void { inMenu = false; $menu.hidden = true; newMatch(); }
+setLevel(level);
+$menu.hidden = !inMenu;
+$levels.forEach((b, i) => b.addEventListener('click', () => setLevel(i)));
+document.querySelector('#kickoff')!.addEventListener('click', kickOff);
 document.querySelector('#again')!.addEventListener('click', newMatch);
+document.querySelector('#to-menu')!.addEventListener('click', openMenu);
 const overlay = { message: '', messageT: 0 };
 
 input.onCameraButton = () => renderer.cam.cycle();
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') renderer.cam.cycle();
+  if (inMenu) {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') setLevel(level - 1);
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') setLevel(level + 1);
+    if (e.code === 'Enter') { e.preventDefault(); kickOff(); }
+    return;
+  }
   if (e.code === 'Enter' && match.over) newMatch();
+  if (e.code === 'Escape' && match.over) openMenu();
   if (e.code === 'KeyM') { sound.toggleMute(); showSound(); }
   if (e.code === 'KeyH') setHelp($help.hidden);
 });
@@ -55,7 +81,7 @@ const setHelp = (open: boolean) => { $help.hidden = !open; $showHelp.hidden = op
 document.querySelector('#hide-help')!.addEventListener('click', () => setHelp(false));
 $showHelp.addEventListener('click', () => setHelp(true));
 
-let last = performance.now(), acc = 0, overAt = 0;
+let last = performance.now(), acc = 0, overAt = 0, padX = 0, padA = true;
 function frame(now: number): void {
   acc += Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -87,14 +113,24 @@ function frame(now: number): void {
     acc -= DT;
   }
 
-  if (match.over && $fulltime.hidden) {
+  if (input.device === 'pad') { // menu navigation on the pad: stick to choose, A to start
+    const x = Math.round(actions.mx);
+    if (inMenu && x !== padX && x !== 0) setLevel(level + x);
+    if (inMenu && actions.pass && !padA) kickOff();
+    padX = x; padA = actions.pass;
+  }
+  if (match.over && $fulltime.hidden && !inMenu) {
     overAt = now;
     $result.textContent = `Home ${match.score[0]} – ${match.score[1]} Away`;
     $fulltime.hidden = false;
     if (demo) setTimeout(newMatch, 5000);
   }
+  if (inMenu && match.over) newMatch();
   if (input.device === 'pad') sound.start(); // a pad press counts as the user gesture that unlocks audio
-  if (match.over && actions.pass && now - overAt > 1500) newMatch(); // A / Cross on the pad
+  if (match.over && !inMenu && now - overAt > 1500) { // A / Cross or B / Circle on the pad
+    if (actions.pass) newMatch();
+    else if (actions.shoot) openMenu();
+  }
   const mins = Math.floor(match.clock / 60) + (match.period === 'second half' || match.period === 'full-time' ? 45 : 0);
   const secs = Math.floor(match.clock % 60);
   $clock.textContent = match.period === 'half-time' ? 'HT' : match.period === 'full-time' ? 'FT' : `${mins}:${String(secs).padStart(2, '0')}`;

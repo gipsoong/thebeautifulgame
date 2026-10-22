@@ -15,6 +15,13 @@ describe('player movement', () => {
     expect(p.vx).toBeCloseTo(SPRINT, 5);
   });
 
+  it('scales top speed with skill (difficulty)', () => {
+    const p = createPlayer(50, 34), ball = farBall(), a = { ...NO_ACTIONS, mx: 1, sprint: true };
+    p.skill = 0.92;
+    for (let t = 0; t < 1.5; t += DT) stepPlayer(p, ball, a, DT);
+    expect(p.vx).toBeCloseTo(SPRINT * 0.92, 5);
+  });
+
   it('has to brake before reversing direction', () => {
     const p = createPlayer(50, 34), ball = farBall();
     for (let t = 0; t < 1; t += DT) stepPlayer(p, ball, { ...NO_ACTIONS, mx: 1 }, DT);

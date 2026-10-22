@@ -15,10 +15,22 @@
         <span class="team home">Home</span><span class="score" id="score-home">0</span><span class="score" id="score-away">0</span><span class="team away">Away</span><span class="clock" id="clock">0:00</span>
         <span class="device" id="device">Keyboard + mouse</span>
       </div>
+      <section class="menu" id="menu" hidden>
+        <h1>The Beautiful Game</h1>
+        <p>You are Home, in yellow. Choose how good the CPU is.</p>
+        <div class="levels" role="radiogroup" aria-label="Difficulty">
+          <button type="button" role="radio" data-level="0">Easy</button>
+          <button type="button" role="radio" data-level="1">Normal</button>
+          <button type="button" role="radio" data-level="2">Hard</button>
+        </div>
+        <button class="go" id="kickoff" type="button">Kick off (Enter / A)</button>
+        <p class="hint">← → or the left stick to choose</p>
+      </section>
       <section class="fulltime" id="fulltime" hidden>
         <h2>Full-time</h2>
         <p class="result" id="result"></p>
         <button id="again" type="button">Play again (Enter / A)</button>
+        <button class="secondary" id="to-menu" type="button">Change difficulty (Esc / B)</button>
       </section>
       <div class="toggles">
         <button class="help-toggle" id="show-help" type="button">Controls (H)</button>

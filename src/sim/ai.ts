@@ -3,7 +3,7 @@ import { NO_ACTIONS, type Actions } from '../input/actions';
 import { type Vec2, clamp, norm } from '../math';
 import type { Ball } from './ball';
 import { leadTarget, lobPowerFor, passPowerFor, passSpeedFor } from './kick';
-import { keeperTarget, shotCrossingY } from './keeper';
+import { keeperTarget, shotCrossingY, startDive } from './keeper';
 import { type Player, queueKick } from './player';
 import { offsidePlayers } from './rules';
 import { type TeamId, attackDir, oppGoalX, ownGoalX } from './team';
@@ -138,6 +138,7 @@ function keeperBrain(gk: Player, ctx: AIContext): Decision {
   }
   // Reaction time: a keeper can't start moving to a shot the instant it is struck.
   if (ctx.sinceKick < 0.22 / gk.skill ** 2 && shotCrossingY(gk, ball) !== null) return decide({ ...NO_ACTIONS });
+  if (startDive(gk, ball)) return decide({ ...NO_ACTIONS });
   const t = keeperTarget(gk, ball);
   return decide(steer(gk, t, 1.5));
 }

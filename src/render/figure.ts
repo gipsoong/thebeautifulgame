@@ -35,7 +35,7 @@ export function stepAnim(a: Anim, vx: number, vy: number, fx: number, fy: number
 
 type P3 = [number, number, number];
 
-export type Pose = 'run' | 'tackle' | 'slide' | 'down';
+export type Pose = 'run' | 'tackle' | 'slide' | 'down' | 'dive';
 
 export interface FigureStyle { shirt: string; shorts: string; skin: string; hair: string; boots: string }
 
@@ -150,6 +150,14 @@ function staticPose(pose: Exclude<Pose, 'run'>, W: Place): Skeleton {
       pelvis: W(0, 0, z), chest: W(-0.35, 0, z + 0.38), head: W(-0.45, 0, z + 0.58),
       hipL: W(0, -0.11, z), hipR: W(0, 0.11, z), footL: W(0.35, -0.12, 0.06), footR: W(0.9, 0.08, 0.12),
       shL: W(-0.33, -0.19, z + 0.35), shR: W(-0.33, 0.19, z + 0.35), handL: W(-0.45, -0.3, 0.02), handR: W(-0.1, 0.35, z + 0.2),
+    };
+  }
+  if (pose === 'dive') { // full stretch in the air, arms reaching the way he dives
+    const z = 0.55;
+    return {
+      pelvis: W(0, 0, z), chest: W(0.45, 0, z + 0.05), head: W(0.7, 0, z + 0.08),
+      hipL: W(0, -0.11, z), hipR: W(0, 0.11, z), footL: W(-0.75, -0.14, z - 0.1), footR: W(-0.7, 0.12, z - 0.05),
+      shL: W(0.42, -0.19, z + 0.05), shR: W(0.42, 0.19, z + 0.05), handL: W(1.0, -0.16, z + 0.12), handR: W(1.0, 0.16, z + 0.12),
     };
   }
   // down: flat on his back, feet towards where he was facing

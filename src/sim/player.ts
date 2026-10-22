@@ -15,7 +15,7 @@ export interface BufferedKick {
 }
 
 /** normal: running about. tackle: committed to a standing tackle. slide: sliding. down: on the floor. */
-export type PlayerState = 'normal' | 'tackle' | 'slide' | 'down';
+export type PlayerState = 'normal' | 'tackle' | 'slide' | 'down' | 'dive';
 
 export interface Player {
   id: number;
@@ -80,12 +80,12 @@ export function stepPlayer(p: Player, ball: Ball, a: Actions, dt: number): void 
   if (p.state !== 'normal') {
     p.stateT -= dt;
     // Sliding and lying on the floor: no steering, just friction.
-    const fr = p.state === 'slide' ? 7 : p.state === 'down' ? 14 : 10;
+    const fr = p.state === 'slide' ? 7 : p.state === 'dive' ? 3 : p.state === 'down' ? 14 : 10;
     const sp = Math.hypot(p.vx, p.vy), ns = Math.max(0, sp - fr * dt);
     if (sp > 0) { p.vx *= ns / sp; p.vy *= ns / sp; }
     move(p, dt);
     if (p.stateT <= 0) {
-      if (p.state === 'slide') { p.state = 'down'; p.stateT = 0.45; } // getting back up
+      if (p.state === 'slide' || p.state === 'dive') { p.state = 'down'; p.stateT = 0.45; } // getting back up
       else p.state = 'normal';
     }
     return;

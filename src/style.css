@@ -27,7 +27,8 @@ canvas { display: block; width: 100%; height: 100%; outline: none; }
 .help button { margin-top: 6px; font: inherit; background: transparent; color: var(--muted); border: 1px solid var(--muted); padding: 2px 8px; cursor: pointer; }
 .help button:focus-visible { outline: 2px solid var(--accent); }
 [hidden] { display: none !important; }
-.help-toggle { position: absolute; left: 16px; bottom: 16px; font: 500 12px var(--mono); background: var(--panel); color: var(--muted); border: 1px solid var(--muted); padding: 4px 10px; cursor: pointer; }
+.toggles { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 6px; flex-wrap: wrap; }
+.help-toggle { font: 500 12px var(--mono); background: var(--panel); color: var(--muted); border: 1px solid var(--muted); padding: 4px 10px; cursor: pointer; }
 .help-toggle:focus-visible { outline: 2px solid var(--accent); }
 .bug .clock { font-family: var(--mono); font-size: 14px; font-weight: 500; display: flex; align-items: center; font-variant-numeric: tabular-nums; }
 .fulltime { position: absolute; inset: 0; margin: auto; width: min(360px, calc(100% - 32px)); height: max-content; background: var(--panel); padding: 20px 24px; text-align: center; }

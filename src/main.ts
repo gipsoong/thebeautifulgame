@@ -1,5 +1,6 @@
 import './style.css';
 import { DT } from './config';
+import { Sound } from './audio/sound';
 import { Input } from './input/input';
 import { type Anim, createAnim, startKick, stepAnim } from './render/figure';
 import { Renderer } from './render/renderer';
@@ -21,6 +22,17 @@ let match = new Match(Math.random, !demo);
 let anims = new Map<Player, Anim>(match.players.map((p) => [p, createAnim()]));
 const renderer = new Renderer(canvas);
 const input = new Input(canvas);
+const sound = new Sound();
+const $sound = document.querySelector<HTMLElement>('#sound')!;
+const showSound = () => { $sound.textContent = sound.muted ? 'Sound off (M)' : 'Sound on (M)'; };
+showSound();
+$sound.addEventListener('click', () => { sound.toggleMute(); showSound(); canvas.focus(); });
+
+/** The crowd gets louder as the ball nears either goal. */
+function excitement(): number {
+  const b = match.ball, d = Math.min(Math.hypot(b.x, b.y - 34), Math.hypot(105 - b.x, b.y - 34));
+  return match.restart || match.period !== 'first half' && match.period !== 'second half' ? 0 : Math.max(0, (30 - d) / 30) ** 1.5;
+}
 
 function newMatch(): void {
   match = new Match(Math.random, !demo);
@@ -35,6 +47,7 @@ input.onCameraButton = () => renderer.cam.cycle();
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyC') renderer.cam.cycle();
   if (e.code === 'Enter' && match.over) newMatch();
+  if (e.code === 'KeyM') { sound.toggleMute(); showSound(); }
   if (e.code === 'KeyH') setHelp($help.hidden);
 });
 const $showHelp = document.querySelector<HTMLElement>('#show-help')!;
@@ -52,8 +65,15 @@ function frame(now: number): void {
 
   while (acc >= DT) { // fixed 120 Hz simulation, decoupled from the display refresh rate
     for (const e of match.step(actions, DT)) {
-      if (e.type === 'message') { overlay.message = e.text; overlay.messageT = 1.4; }
+      if (e.type === 'message') {
+        overlay.message = e.text; overlay.messageT = 1.4;
+        if (e.text === 'Off the post!') sound.post();
+        if (e.text === 'Foul!' || e.text === 'Offside' || e.text === 'Penalty!') sound.whistle('short');
+      }
+      if (e.type === 'goal') { sound.goal(); sound.whistle('short'); }
+      if (e.type === 'whistle') sound.whistle(e.period === 'full-time' ? 'end' : e.period === 'half-time' ? 'long' : 'short');
       if (e.type === 'kick') {
+        sound.kick(e.power);
         startKick(anims.get(e.player)!, e.power);
         if (e.human) input.rumble(0.3 + 0.6 * e.power, 60 + 80 * e.power);
       }
@@ -63,6 +83,7 @@ function frame(now: number): void {
       stepAnim(anims.get(p)!, p.vx, p.vy, p.fx, p.fy, DT, charging);
     }
     overlay.messageT = Math.max(0, overlay.messageT - DT);
+    sound.setExcitement(excitement(), DT);
     acc -= DT;
   }
 
@@ -72,6 +93,7 @@ function frame(now: number): void {
     $fulltime.hidden = false;
     if (demo) setTimeout(newMatch, 5000);
   }
+  if (input.device === 'pad') sound.start(); // a pad press counts as the user gesture that unlocks audio
   if (match.over && actions.pass && now - overAt > 1500) newMatch(); // A / Cross on the pad
   const mins = Math.floor(match.clock / 60) + (match.period === 'second half' || match.period === 'full-time' ? 45 : 0);
   const secs = Math.floor(match.clock % 60);

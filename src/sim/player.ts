@@ -3,7 +3,7 @@ import {
   SPRINT,
 } from '../config';
 import type { Actions } from '../input/actions';
-import type { Vec2 } from '../math';
+import { type Vec2, gauss } from '../math';
 import type { Ball } from './ball';
 import type { Role, TeamId } from './team';
 
@@ -120,7 +120,7 @@ function move(p: Player, dt: number): void {
  * Ball contact without a kick. On the ground it is a dribble touch or a trap; in the air,
  * a chest or thigh cushion drops it to the feet, and at head height it is headed towards `headTo`.
  */
-export function touchBall(p: Player, ball: Ball, sprinting: boolean, headTo?: Vec2): boolean {
+export function touchBall(p: Player, ball: Ball, sprinting: boolean, headTo?: Vec2, rng: () => number = Math.random): boolean {
   if (p.state !== 'normal' || p.touchCd > 0 || p.buffered) return false;
   const bx = ball.x - p.x, by = ball.y - p.y, d = Math.hypot(bx, by);
   const sp = Math.hypot(p.vx, p.vy), relV = Math.hypot(ball.vx - p.vx, ball.vy - p.vy);
@@ -140,13 +140,18 @@ export function touchBall(p: Player, ball: Ball, sprinting: boolean, headTo?: Ve
     return true;
   }
   if (d >= REACH) return false;
+  // First touch: the harder the ball comes in, the more it gets away (less so for better players).
+  const heavy = Math.max(0, relV - 6) / p.skill;
+  const ex = gauss(rng) * heavy * 0.06, ey = gauss(rng) * heavy * 0.06;
   if (sp > 0.8) {
     const push = sprinting ? 1.55 : 1.3; // sprinting = longer, riskier touches
-    ball.vx = p.fx * sp * push; ball.vy = p.fy * sp * push;
+    const keep = Math.min(0.3, heavy * 0.03); // incoming pace not taken off
+    ball.vx = p.fx * sp * push + (ball.vx - p.vx) * keep + ex; ball.vy = p.fy * sp * push + (ball.vy - p.vy) * keep + ey;
     ball.x = p.x + p.fx * 0.45; ball.y = p.y + p.fy * 0.45;
     p.touchCd = sprinting ? 0.38 : 0.26;
-  } else if (relV < 12) { // trap: kill the ball's pace
-    ball.vx *= 0.15; ball.vy *= 0.15; p.touchCd = 0.15;
+  } else if (relV < 12) { // trap: kill most of the ball's pace
+    const keep = 0.12 + heavy * 0.02;
+    ball.vx = ball.vx * keep + ex; ball.vy = ball.vy * keep + ey; p.touchCd = 0.15;
   } else { // too hot to control: deflects off the body
     ball.vx = -ball.vx * 0.3 + (bx / d) * 2; ball.vy = -ball.vy * 0.3 + (by / d) * 2; p.touchCd = 0.2;
   }

@@ -60,3 +60,16 @@ describe('aerial balls', () => {
     expect(touchBall(p, ball, false)).toBe(false);
   });
 });
+
+describe('first touch', () => {
+  const trap = (speed: number) => {
+    const p = createPlayer(50, 34), ball = createBall(50.5, 34);
+    ball.vx = -speed;
+    touchBall(p, ball, false, undefined, () => 0.5);
+    return Math.hypot(ball.vx, ball.vy);
+  };
+  it('kills a soft pass dead but lets a hard one get away a little', () => {
+    expect(trap(5)).toBeLessThan(0.8);
+    expect(trap(11)).toBeGreaterThan(trap(5) * 1.5);
+  });
+});

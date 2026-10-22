@@ -6,6 +6,8 @@ import { type Anim, type FigureStyle, type Pose, drawFigure } from './figure';
 
 type P3 = [number, number, number?];
 
+/** Player 1 (home) and player 2 (away) marker colours. */
+const MARKER = ['#f2c230', '#6fd3ff'];
 const HOME: FigureStyle = { shirt: '#f2c230', shorts: '#15201a', skin: '#e8c7a4', hair: '#2a1c12', boots: '#0d0d0d' };
 const AWAY: FigureStyle = { shirt: '#3d7fe0', shorts: '#f1f4f8', skin: '#c99872', hair: '#1a1410', boots: '#0d0d0d' };
 const HOME_GK: FigureStyle = { ...HOME, shirt: '#3fbf6f' };
@@ -42,7 +44,9 @@ export class Renderer {
   draw(m: Match, anims: Map<Player, Anim>, o: Overlay): void {
     const { ctx, cam } = this;
     const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
-    const { ball, controlled: player } = m;
+    const { ball } = m;
+    // With two people playing, the camera shares itself out and just follows the ball.
+    const player = m.humans === 2 ? ball : m.controlled[0];
 
     // Camera follows the ball, leaning slightly towards the controlled player and where the ball is going.
     const tx = ball.x * 0.75 + player.x * 0.25 + ball.vx * 0.25, ty = ball.y * 0.75 + player.y * 0.25 + ball.vy * 0.1;
@@ -63,14 +67,16 @@ export class Renderer {
 
     // Flat things on the grass first: shadows and the aim line.
     for (const p of m.players) this.shadow(p.x, p.y, p.state === 'down' ? 0.9 : 0.45, 0.2, 0.3);
-    this.marker(player);
+    const marked = m.humans === 2 ? m.controlled : [m.controlled[0]];
+    marked.forEach((p, i) => this.marker(p, MARKER[i]));
     this.shadow(ball.x, ball.y, 0.14, 0.07, 0.4 / (1 + ball.z * 0.4));
-    if (player.chargeKind) {
-      const L = 4 + 10 * player.charge;
-      ctx.strokeStyle = 'rgba(242,194,48,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
-      this.line([[player.x, player.y], [player.x + player.fx * L, player.y + player.fy * L]]);
-      ctx.setLineDash([]);
-    }
+    marked.forEach((p, i) => {
+      if (!p.chargeKind) return;
+      const L = 4 + 10 * p.charge;
+      ctx.strokeStyle = MARKER[i]; ctx.globalAlpha = 0.6; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+      this.line([[p.x, p.y], [p.x + p.fx * L, p.y + p.fy * L]]);
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    });
 
     // Upright things, painted far side first so nearer ones overlap.
     const things: { y: number; draw: () => void }[] = [];
@@ -84,10 +90,11 @@ export class Renderer {
     things.push({ y: ball.y, draw: () => this.ball(m) });
     things.sort((a, b) => a.y - b.y).forEach((t) => t.draw());
 
-    if (player.chargeKind) {
-      const p = cam.project(player.x, player.y, 2.3), bw = 60;
+    for (const pl of marked) { // power bar
+      if (!pl.chargeKind) continue;
+      const p = cam.project(pl.x, pl.y, 2.3), bw = 60;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw, 6);
-      ctx.fillStyle = player.charge > 0.8 ? '#ff6b4a' : '#f2c230'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw * player.charge, 6);
+      ctx.fillStyle = pl.charge > 0.8 ? '#ff6b4a' : '#f2c230'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw * pl.charge, 6);
     }
     if (o.messageT > 0) {
       ctx.globalAlpha = Math.min(1, o.messageT * 2);
@@ -102,16 +109,16 @@ export class Renderer {
   }
 
   /** Ring on the grass under the controlled player, plus a pointer above his head. */
-  private marker(p: Player): void {
+  private marker(p: Player, colour: string): void {
     const { ctx } = this;
-    ctx.strokeStyle = '#f2c230'; ctx.lineWidth = 2;
+    ctx.strokeStyle = colour; ctx.lineWidth = 2;
     const pts: P3[] = [];
     for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2; pts.push([p.x + Math.cos(a) * 0.7, p.y + Math.sin(a) * 0.7]); }
     this.line(pts);
     const top = this.cam.project(p.x, p.y, 2.15);
     if (top.hidden) return;
     const s = Math.max(5, 0.18 * top.k);
-    ctx.fillStyle = '#f2c230';
+    ctx.fillStyle = colour;
     ctx.beginPath(); ctx.moveTo(top.x - s, top.y - s * 1.2); ctx.lineTo(top.x + s, top.y - s * 1.2); ctx.lineTo(top.x, top.y); ctx.closePath(); ctx.fill();
   }
 
@@ -125,7 +132,7 @@ export class Renderer {
     ctx.beginPath(); ctx.moveTo(x0 + rw / 2, y0); ctx.lineTo(x0 + rw / 2, y0 + rh); ctx.stroke();
     for (const p of m.players) {
       ctx.fillStyle = kit(p).shirt;
-      ctx.beginPath(); ctx.arc(x0 + p.x * sx, y0 + p.y * sx, p === m.controlled ? 3.5 : 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x0 + p.x * sx, y0 + p.y * sx, m.controlled.includes(p) ? 3.5 : 2.5, 0, Math.PI * 2); ctx.fill();
     }
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(x0 + m.ball.x * sx, y0 + m.ball.y * sx, 2, 0, Math.PI * 2); ctx.fill();

@@ -14,7 +14,7 @@ function mulberry32(seed: number) {
 }
 
 export function simulate(seconds: number, seed: number) {
-  const m = new Match(mulberry32(seed), false);
+  const m = new Match(mulberry32(seed), 0);
   const stats = { kicks: [0, 0], messages: new Map<string, number>() };
   for (let t = 0; t < seconds; t += DT) {
     for (const e of m.step(NO_ACTIONS, DT)) {
@@ -45,17 +45,27 @@ describe('match', () => {
     expect(m.players.filter((p) => p.team === 1)).toHaveLength(11);
     expect(m.restart?.kind).toBe('kickoff');
     m.step(NO_ACTIONS, DT);
-    expect(m.controlled.team).toBe(0);
-    expect(m.controlled.role).toBe('FWD');
+    expect(m.controlled[0].team).toBe(0);
+    expect(m.controlled[0].role).toBe('FWD');
     // Opponents wait outside the centre circle until the ball is played.
     for (const p of m.players.filter((q) => q.team === 1)) {
       expect(Math.hypot(p.x - PITCH_W / 2, p.y - PITCH_H / 2)).toBeGreaterThanOrEqual(9.1);
     }
   });
 
+  it('lets a second person steer the away side', () => {
+    const m = new Match(mulberry32(4), 2);
+    const p2 = m.controlled[1], start = p2.y;
+    expect(p2.team).toBe(1);
+    for (let t = 0; t < 1; t += DT) m.step(NO_ACTIONS, DT, { ...NO_ACTIONS, my: 1 });
+    expect(p2.y - start).toBeGreaterThan(3);
+    // Nobody on the home side pressed anything, so the home kick-off taker has not kicked it.
+    expect(Math.hypot(m.ball.x - PITCH_W / 2, m.ball.y - PITCH_H / 2)).toBeLessThan(0.5);
+  });
+
   it('gets shots away in AI-only play', () => {
     let shots = 0;
-    const m = new Match(mulberry32(3), false);
+    const m = new Match(mulberry32(3), 0);
     for (let t = 0; t < 300; t += DT) for (const e of m.step(NO_ACTIONS, DT)) if (e.type === 'kick' && e.kind === 'shoot') shots++;
     expect(shots).toBeGreaterThan(2);
   }, 30_000);

@@ -41,7 +41,7 @@ describe('match flow', () => {
 
   it('gives a penalty for a foul in the box and clears the area for it', () => {
     let s = 3; const rng = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    const m = new Match(rng, false);
+    const m = new Match(rng, 0);
     m.step(NO_ACTIONS, DT);
     const fouler = m.players.find((p) => p.team === 1 && p.role === 'DEF')!;
     const victim = m.players.find((p) => p.team === 0 && p.role === 'FWD')!;
@@ -60,7 +60,7 @@ describe('match flow', () => {
 
   it('plays two halves and blows for full-time', () => {
     let s = 7; const rng = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    const m = new Match(rng, false);
+    const m = new Match(rng, 0);
     const whistles: string[] = [];
     for (let t = 0; t < HALF_REAL_SECONDS * 2.5 && !m.over; t += DT) {
       for (const e of m.step(NO_ACTIONS, DT)) if (e.type === 'whistle') whistles.push(e.period);

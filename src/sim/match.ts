@@ -2,7 +2,7 @@ import {
   CENTRE_Y, GK_HOLD_TIME, GOAL_H, GOAL_W, HALF_GAME_SECONDS, HALF_REAL_SECONDS, PITCH_H, PITCH_W, STOPPAGE_GAME_SECONDS,
 } from '../config';
 import { type Actions, NO_ACTIONS } from '../input/actions';
-import { clamp, norm } from '../math';
+import { type Vec2, clamp, gauss, norm } from '../math';
 import { type AIContext, bestPass, intercept, playPass, pressTarget, steer, think } from './ai';
 import { type Ball, createBall, stepBall } from './ball';
 import { collidePlayers, standingTackle, startSlide, stepSlide } from './contact';
@@ -10,7 +10,7 @@ import { leadTarget, lobPowerFor, passPowerFor, pickReceiver, tryKick } from './
 import { keeperSave } from './keeper';
 import { type KickKind, type Player, createPlayer, queueKick, stepPlayer, touchBall, updateCharge } from './player';
 import { inBox, offsidePlayers } from './rules';
-import { FOUR_FOUR_TWO, type TeamId, attackDir, other, ownGoalX, toWorld } from './team';
+import { FOUR_FOUR_TWO, type TeamId, attackDir, other, oppGoalX, ownGoalX, toWorld } from './team';
 
 export type MatchEvent =
   | { type: 'message'; text: string }
@@ -162,7 +162,8 @@ export class Match {
         Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y));
       for (const p of order) {
         if (p.role === 'GK' && this.holder) break;
-        if (touchBall(p, ball, decisions.get(p)!.actions.sprint)) {
+        const a = decisions.get(p)!.actions;
+        if (touchBall(p, ball, a.sprint, ball.z > 1.5 ? this.headerAim(p, a) : undefined)) {
           if (this.offside.has(p)) {
             ev.push({ type: 'message', text: 'Offside' });
             this.setRestart('free kick', other(p.team), clamp(p.x, 1, PITCH_W - 1), clamp(p.y, 1, PITCH_H - 1));
@@ -318,6 +319,19 @@ export class Match {
         .filter((q) => q.team === p.team && q.role !== 'GK')
         .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
     }
+  }
+
+  /** Where a header goes: at goal near the opponents' box, clear near our own, else where the player aims. */
+  private headerAim(p: Player, a: Actions): Vec2 | undefined {
+    const { ball } = this, err = gauss(this.rng) * 0.12;
+    const towardsGoal = Math.hypot(oppGoalX(p.team) - ball.x, CENTRE_Y - ball.y) < 20;
+    let dir: Vec2 | undefined;
+    if (towardsGoal) dir = norm(oppGoalX(p.team) - ball.x, CENTRE_Y + (this.rng() - 0.5) * 5 - ball.y);
+    else if (this.isHuman(p.team) && p === this.controlled[p.team] && a.aim) dir = a.aim;
+    else if (Math.abs(ownGoalX(p.team) - ball.x) < 35) dir = norm(attackDir(p.team), (ball.y - CENTRE_Y) * 0.04);
+    if (!dir) return undefined;
+    const c = Math.cos(err), s = Math.sin(err);
+    return { x: dir.x * c - dir.y * s, y: dir.x * s + dir.y * c };
   }
 
   private checkGoalAndOut(ev: MatchEvent[]): void {

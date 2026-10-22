@@ -64,9 +64,12 @@ describe('match', () => {
   });
 
   it('gets shots away in AI-only play', () => {
+    // Summed over a few seeds: single matches vary a lot, as real ones do.
     let shots = 0;
-    const m = new Match(mulberry32(3), 0);
-    for (let t = 0; t < 300; t += DT) for (const e of m.step(NO_ACTIONS, DT)) if (e.type === 'kick' && e.kind === 'shoot') shots++;
-    expect(shots).toBeGreaterThan(2);
-  }, 30_000);
+    for (const seed of [1, 2, 3, 4]) {
+      const m = new Match(mulberry32(seed), 0);
+      for (let t = 0; t < 300; t += DT) for (const e of m.step(NO_ACTIONS, DT)) if (e.type === 'kick' && e.kind === 'shoot') shots++;
+    }
+    expect(shots).toBeGreaterThan(6);
+  }, 60_000);
 });

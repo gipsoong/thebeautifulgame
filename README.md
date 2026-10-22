@@ -44,6 +44,6 @@ TypeScript + Canvas 2D + Vite, with no game engine or physics library.
 ## Roadmap
 
 1. **Feel** (done): one player, ball and keeper.
-2. **Teams** (this): 11v11 in a 4-4-2, player switching, tackles, shoulder challenges, CPU AI, restarts, radar.
-3. **Match rules**: clock and halves, offside, penalties, proper set pieces, cards.
-4. **Polish**: local 2-player, team picker, difficulty, sound, button remapping.
+2. **Teams** (done): 11v11 in a 4-4-2, player switching, tackles, shoulder challenges, CPU AI, restarts, radar.
+3. **Match rules** (this): clock and two halves (4 real minutes each), offside, penalties, full-time screen.
+4. **Polish**: sound, difficulty levels, local 2-player, team picker, button remapping, cards.

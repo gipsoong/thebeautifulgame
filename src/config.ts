@@ -41,3 +41,8 @@ export const DOWN_TIME = 1.0;
 // Goalkeepers
 export const GK_SPEED = 6;
 export const GK_HOLD_TIME = 1.0;
+
+// Match
+export const HALF_REAL_SECONDS = 240; // real seconds per half; the clock shows 45 football minutes
+export const HALF_GAME_SECONDS = 45 * 60;
+export const STOPPAGE_GAME_SECONDS = 2 * 60; // a half ends at the next stoppage after 45:00, or at 47:00

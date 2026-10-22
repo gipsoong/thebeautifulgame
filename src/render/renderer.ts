@@ -20,7 +20,7 @@ const pose = (p: Player): Pose => (p.state === 'normal' ? 'run' : p.state);
 const LINE = 'rgba(233,242,230,0.9)';
 const NET = 'rgba(255,255,255,0.35)';
 
-export interface Overlay { message: string; messageT: number }
+export interface Overlay { message: string; messageT: number; replay?: boolean }
 
 export class Renderer {
   readonly cam = new Camera();
@@ -95,6 +95,12 @@ export class Renderer {
       const p = cam.project(pl.x, pl.y, 2.3), bw = 60;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw, 6);
       ctx.fillStyle = pl.charge > 0.8 ? '#ff6b4a' : '#f2c230'; ctx.fillRect(p.x - bw / 2, p.y - 8, bw * pl.charge, 6);
+    }
+    if (o.replay) {
+      ctx.font = '700 22px "Barlow Condensed", "Arial Narrow", sans-serif';
+      ctx.textAlign = 'right'; ctx.fillStyle = '#f2c230'; ctx.fillText('REPLAY', W - 16, 34);
+      ctx.font = '400 12px "IBM Plex Mono", monospace'; ctx.fillStyle = '#f3f6ef';
+      ctx.fillText('Pass / Enter to skip', W - 16, 52); ctx.textAlign = 'left';
     }
     if (o.messageT > 0) {
       ctx.globalAlpha = Math.min(1, o.messageT * 2);

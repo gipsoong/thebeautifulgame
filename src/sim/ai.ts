@@ -129,7 +129,7 @@ function keeperBrain(gk: Player, ctx: AIContext): Decision {
     return decide(steer(gk, intercept(gk, ball).at, 0, false));
   }
   // Reaction time: a keeper can't start moving to a shot the instant it is struck.
-  if (ctx.sinceKick < 0.22 && shotCrossingY(gk, ball) !== null) return decide({ ...NO_ACTIONS });
+  if (ctx.sinceKick < 0.22 / gk.skill ** 2 && shotCrossingY(gk, ball) !== null) return decide({ ...NO_ACTIONS });
   const t = keeperTarget(gk, ball);
   return decide(steer(gk, t, 1.5));
 }

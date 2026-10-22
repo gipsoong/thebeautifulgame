@@ -46,7 +46,7 @@ export function tryKick(p: Player, ball: Ball, dt: number, rng: () => number = M
   const dir = k.aim ? norm(k.aim.x, k.aim.y) : { x: p.fx, y: p.fy };
   const pw = k.power, speed = Math.hypot(p.vx, p.vy);
   // Inaccuracy grows with power, running speed and how far the ball is from the sweet spot.
-  const err = (0.015 + 0.07 * pw * pw + (0.025 * speed) / SPRINT + 0.04 * Math.max(0, d - 0.6)) * gauss(rng);
+  const err = (0.015 + 0.07 * pw * pw + (0.025 * speed) / SPRINT + 0.04 * Math.max(0, d - 0.6)) * gauss(rng) / p.skill ** 3;
   const a = Math.atan2(dir.y, dir.x) + err;
   let v: number, vz: number;
   switch (k.kind) {

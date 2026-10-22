@@ -24,22 +24,26 @@ Plug in a controller and press any button. The game switches to whichever device
 | Pass | Right click or J | A / Cross |
 | Shoot | Left click or K | B / Circle |
 | Chip / lob | E or L | X / Square |
+| Switch player | Q or Space | LB / L1 |
+| Press (without the ball) | Hold right click or J | Hold A / Cross |
+| Standing tackle | Left click or K | B / Circle |
+| Slide tackle | E or L | X / Square |
 | Camera | C | View / Share |
 
-Hold a kick button to charge and release to kick.
+Hold a kick button to charge and release to kick. Passes go to the teammate you aim at, with the power set for the distance. Add `#demo` to the URL to watch the AI play itself.
 
 ## How it is built
 
 TypeScript + Canvas 2D + Vite, with no game engine or physics library.
 
-- `src/sim/` is the simulation in metres and seconds, stepped at a fixed 120 Hz. The ball is "2.5D" (pitch position plus height), with gravity, air drag, bounce, rolling friction and swerve. Players have capped acceleration, so turning at speed costs momentum. The simulation never touches the DOM, so it can be unit-tested.
+- `src/sim/` is the simulation (`match.ts` runs it; `ai.ts` is the CPU brain: formation shape that shifts with the ball, one presser per team, pass scoring, shooting, runs in behind; `contact.ts` handles tackles and collisions; `keeper.ts` positioning and saves). It is in metres and seconds, stepped at a fixed 120 Hz. The ball is "2.5D" (pitch position plus height), with gravity, air drag, bounce, rolling friction and swerve. Players have capped acceleration, so turning at speed costs momentum. The simulation never touches the DOM, so it can be unit-tested.
 - `src/input/` turns keyboard, mouse and Gamepad API ("standard" mapping) input into one `Actions` value, so gameplay code never knows which device is in use.
 - `src/render/` holds a perspective camera that projects the simulation (broadcast, low and end-to-end presets) and procedurally animated stick figures whose stride follows the distance they actually cover.
 - `src/config.ts` keeps every tuning constant in one place.
 
 ## Roadmap
 
-1. **Feel** (this): one player, ball and keeper.
-2. **Small-sided**: 5v5, player switching, tackles, shoulder challenges, first CPU team AI.
-3. **Full match**: 11v11, set pieces, simple offside and fouls, clock, radar.
+1. **Feel** (done): one player, ball and keeper.
+2. **Teams** (this): 11v11 in a 4-4-2, player switching, tackles, shoulder challenges, CPU AI, restarts, radar.
+3. **Match rules**: clock and halves, offside, penalties, proper set pieces, cards.
 4. **Polish**: local 2-player, team picker, difficulty, sound, button remapping.

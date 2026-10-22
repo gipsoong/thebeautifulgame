@@ -29,3 +29,15 @@ export const REACH = 0.75; // dribble touch distance
 export const KICK_REACH = 1.1;
 export const KICK_BUFFER = 0.35; // s a released kick waits for the ball to come into reach
 export const CHARGE_TIME = 0.9; // s to full power
+
+// Contact
+export const PLAYER_R = 0.4; // body radius for player-player collisions
+export const TACKLE_REACH = 1.4;
+export const TACKLE_COOLDOWN = 0.8;
+export const SLIDE_TIME = 0.6;
+export const SLIDE_SPEED = 8.5;
+export const DOWN_TIME = 1.0;
+
+// Goalkeepers
+export const GK_SPEED = 6;
+export const GK_HOLD_TIME = 1.0;

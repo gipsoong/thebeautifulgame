@@ -5,7 +5,7 @@ export type Device = 'kbm' | 'pad';
 
 const DEADZONE = 0.18;
 // Gamepad API "standard" mapping: https://w3c.github.io/gamepad/#remapping
-const BTN = { A: 0, B: 1, X: 2, RB: 5, RT: 7, VIEW: 8 } as const;
+const BTN = { A: 0, B: 1, X: 2, LB: 4, RB: 5, RT: 7, VIEW: 8 } as const;
 
 /**
  * Merges keyboard + mouse and gamepad into one Actions value per frame.
@@ -70,6 +70,7 @@ export class Input {
       pass: m.r || k.has('KeyJ'),
       shoot: m.l || k.has('KeyK'),
       lob: k.has('KeyE') || k.has('KeyL'),
+      switch: k.has('KeyQ') || k.has('Space'),
     };
   }
 
@@ -98,9 +99,9 @@ export class Input {
     this.viewHeld = view;
     const a: Actions = {
       mx: x, my: y, aim: x || y ? norm(x, y) : null,
-      sprint: b(BTN.RT) || b(BTN.RB), pass: b(BTN.A), shoot: b(BTN.B), lob: b(BTN.X),
+      sprint: b(BTN.RT) || b(BTN.RB), pass: b(BTN.A), shoot: b(BTN.B), lob: b(BTN.X), switch: b(BTN.LB),
     };
-    if (x || y || a.pass || a.shoot || a.lob || a.sprint) this.device = 'pad';
+    if (x || y || a.pass || a.shoot || a.lob || a.sprint || a.switch) this.device = 'pad';
     return a;
   }
 }

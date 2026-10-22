@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DT, HALF_REAL_SECONDS, PITCH_W } from '../src/config';
 import { NO_ACTIONS } from '../src/input/actions';
 import { createBall } from '../src/sim/ball';
-import { Match } from '../src/sim/match';
-import { createPlayer } from '../src/sim/player';
+import { Match, type MatchEvent } from '../src/sim/match';
+import { type Player, createPlayer } from '../src/sim/player';
 import { inBox, offsidePlayers } from '../src/sim/rules';
 
 describe('offside', () => {
@@ -68,4 +68,21 @@ describe('match flow', () => {
     expect(whistles).toEqual(['half-time', 'second half', 'full-time']);
     expect(m.over).toBe(true);
   }, 30_000);
+});
+
+describe('cards', () => {
+  it('books a foul and sends a player off for a second yellow', () => {
+    const m = new Match(() => 0, 0); // rng 0: every foul is a booking
+    const by = m.controlled[1], on = m.controlled[0];
+    const foul = (m as unknown as { foul: (b: Player, o: Player, ev: MatchEvent[], c: number) => void }).foul.bind(m);
+    const ev: MatchEvent[] = [];
+    foul(by, on, ev, 0.4);
+    expect(ev).toContainEqual({ type: 'card', player: by, colour: 'yellow' });
+    expect(m.players).toContain(by);
+    foul(by, on, ev, 0.4);
+    expect(ev).toContainEqual({ type: 'card', player: by, colour: 'red' });
+    expect(m.players).not.toContain(by);
+    expect(m.controlled[1]).not.toBe(by);
+    expect(m.controlled[1].team).toBe(1);
+  });
 });

@@ -16,7 +16,8 @@ export type MatchEvent =
   | { type: 'message'; text: string }
   | { type: 'kick'; kind: KickKind; power: number; player: Player; human: boolean }
   | { type: 'goal'; team: TeamId }
-  | { type: 'whistle'; period: Period };
+  | { type: 'whistle'; period: Period }
+  | { type: 'card'; player: Player; colour: 'yellow' | 'red' };
 
 export type Period = 'first half' | 'half-time' | 'second half' | 'full-time';
 type RestartKind = 'kickoff' | 'throw-in' | 'goal kick' | 'corner' | 'free kick' | 'penalty';
@@ -144,14 +145,14 @@ export class Match {
       if (t === 'stand') {
         const res = standingTackle(p, ball, carrier, rng);
         if (res?.type === 'won') this.lastTouch = p;
-        if (res?.type === 'foul') this.foul(res.by, res.on, ev);
+        if (res?.type === 'foul') this.foul(res.by, res.on, ev, 0.15);
       } else if (t === 'slide') startSlide(p);
     }
     for (const p of this.players) stepPlayer(p, ball, decisions.get(p)!.actions, dt);
     for (const p of this.players) {
       const res = stepSlide(p, ball, this.players, rng);
       if (res?.type === 'won') this.lastTouch = p;
-      if (res?.type === 'foul') this.foul(res.by, res.on, ev);
+      if (res?.type === 'foul') this.foul(res.by, res.on, ev, 0.4);
     }
 
     if (!this.holder && !this.restart) {
@@ -291,14 +292,32 @@ export class Match {
     else queueKick(gk, 'lob', 0.8, { x: attackDir(gk.team), y: 0 });
   }
 
-  private foul(by: Player, on: Player, ev: MatchEvent[]): void {
+  /** `cardChance`: how likely this kind of foul is to be booked (a slide from the side is reckless more often). */
+  private foul(by: Player, on: Player, ev: MatchEvent[], cardChance: number): void {
     if (inBox(by.team, on.x, on.y)) {
       ev.push({ type: 'message', text: 'Penalty!' });
       this.setRestart('penalty', on.team, ownGoalX(by.team) + attackDir(by.team) * 11, CENTRE_Y, 1.8);
-      return;
+    } else {
+      ev.push({ type: 'message', text: 'Foul!' });
+      this.setRestart('free kick', on.team, clamp(on.x, 1, PITCH_W - 1), clamp(on.y, 1, PITCH_H - 1));
     }
-    ev.push({ type: 'message', text: 'Foul!' });
-    this.setRestart('free kick', on.team, clamp(on.x, 1, PITCH_W - 1), clamp(on.y, 1, PITCH_H - 1));
+    if (by.role === 'GK' || this.rng() >= cardChance) return;
+    by.yellows++;
+    const colour = by.yellows >= 2 ? 'red' : 'yellow';
+    ev.push({ type: 'card', player: by, colour }, { type: 'message', text: colour === 'red' ? 'Red card!' : 'Yellow card' });
+    if (colour === 'red') this.sendOff(by);
+  }
+
+  /** Off the pitch: the side plays on a man down. Loops already running over the old array are unaffected. */
+  private sendOff(p: Player): void {
+    this.players = this.players.filter((q) => q !== p);
+    if (this.lastTouch === p) this.lastTouch = null;
+    if (this.passTarget === p) { this.passTarget = null; this.passT = 0; }
+    if (this.controlled[p.team] === p) {
+      this.controlled[p.team] = this.players
+        .filter((q) => q.team === p.team && q.role !== 'GK')
+        .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
+    }
   }
 
   private checkGoalAndOut(ev: MatchEvent[]): void {
@@ -361,10 +380,12 @@ export class Match {
     }
     Object.assign(ball, createBall(r.x, r.y));
     const team = this.players.filter((p) => p.team === r.team);
-    const taker = r.kind === 'kickoff' || r.kind === 'penalty' ? team.find((p) => p.role === 'FWD')!
+    const nearest = team.filter((p) => p.role !== 'GK')
+      .sort((a, b) => Math.hypot(a.x - r.x, a.y - r.y) - Math.hypot(b.x - r.x, b.y - r.y))[0];
+    // A forward takes kick-offs and penalties if one is still on the pitch (cards can remove both).
+    const taker = r.kind === 'kickoff' || r.kind === 'penalty' ? team.find((p) => p.role === 'FWD') ?? nearest
       : r.kind === 'goal kick' ? team.find((p) => p.role === 'GK')!
-      : team.filter((p) => p.role !== 'GK')
-        .sort((a, b) => Math.hypot(a.x - r.x, a.y - r.y) - Math.hypot(b.x - r.x, b.y - r.y))[0];
+      : nearest;
     const inField = r.kind === 'kickoff' || r.kind === 'penalty' ? { x: attackDir(r.team), y: 0 } : norm(PITCH_W / 2 - r.x, CENTRE_Y - r.y);
     Object.assign(taker, {
       x: r.x - inField.x * 0.6, y: r.y - inField.y * 0.6, vx: 0, vy: 0, fx: inField.x, fy: inField.y,

@@ -36,6 +36,7 @@ export interface Player {
   pressedT: number; // how long the AI carrier has been under pressure
   runT: number; // time left on a forward run in behind
   skill: number; // 1 is the baseline; scales top speed, kick accuracy and keeper reactions
+  yellows: number; // cards shown; a second yellow is a red
 }
 
 export function createPlayer(x: number, y: number, team: TeamId = 0, role: Role = 'MID', id = 0): Player {
@@ -43,7 +44,7 @@ export function createPlayer(x: number, y: number, team: TeamId = 0, role: Role 
     id, team, role, slot: { x: 0.5, y: 0.5 },
     x, y, vx: 0, vy: 0, fx: team === 0 ? 1 : -1, fy: 0, touchCd: 0, charge: 0, chargeKind: null, buffered: null,
     held: { pass: false, shoot: false, lob: false, switch: false },
-    state: 'normal', stateT: 0, tackleCd: 0, aiT: 0, dribbleSide: id % 2 ? 1 : -1, pressedT: 0, runT: 0, skill: 1,
+    state: 'normal', stateT: 0, tackleCd: 0, aiT: 0, dribbleSide: id % 2 ? 1 : -1, pressedT: 0, runT: 0, skill: 1, yellows: 0,
   };
 }
 

@@ -91,7 +91,29 @@ export function think(p: Player, ctx: AIContext, dt: number): Decision {
     return decide(steer(p, intercept(p, ball).at, 2, false));
   }
   if (p.role === 'FWD' && ctx.possession === p.team) return decide(forwardRun(p, ctx, dt));
+  if (ctx.possession === p.team && carrier) return decide(steer(p, getOpen(p, slotTarget(p, ctx), carrier, ctx), 8));
   return decide(steer(p, slotTarget(p, ctx), 8));
+}
+
+/**
+ * Off the ball in possession: drift out of the nearest marker's reach and out of any
+ * opponent standing in the passing lane from the carrier, so there is a ball to be played.
+ */
+export function getOpen(p: Player, slot: Vec2, carrier: Player, ctx: AIContext): Vec2 {
+  let x = slot.x, y = slot.y;
+  for (const o of ctx.players) {
+    if (o.team === p.team || o.role === 'GK') continue;
+    const dx = x - o.x, dy = y - o.y, d = Math.hypot(dx, dy);
+    if (d > 0 && d < 5) { x += (dx / d) * (5 - d) * 0.8; y += (dy / d) * (5 - d) * 0.8; }
+    // Step sideways off a lane he is blocking.
+    const lane = norm(x - carrier.x, y - carrier.y), u = (o.x - carrier.x) * lane.x + (o.y - carrier.y) * lane.y;
+    const side = (o.x - carrier.x) * -lane.y + (o.y - carrier.y) * lane.x;
+    if (u > 2 && u < Math.hypot(x - carrier.x, y - carrier.y) - 1 && Math.abs(side) < 1.5) {
+      const s = side >= 0 ? -1 : 1, k = 1.5 - Math.abs(side);
+      x += -lane.y * s * k; y += lane.x * s * k;
+    }
+  }
+  return { x: clamp(x, 2, PITCH_W - 2), y: clamp(y, 2, PITCH_H - 2) };
 }
 
 /** The opponents' deepest outfield player, i.e. their defensive line. */

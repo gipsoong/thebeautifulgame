@@ -9,6 +9,7 @@ npm install
 npm run dev      # http://localhost:5173
 npm test         # physics, movement and camera tests
 npm run build    # typecheck + production build into dist/
+npm run build:artifact  # single self-contained page at dist/artifact.html, for publishing as a claude.ai Artifact
 ```
 
 Plug in a controller and press any button. The game switches to whichever device you touched last.

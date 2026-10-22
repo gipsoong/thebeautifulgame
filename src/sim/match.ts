@@ -163,7 +163,7 @@ export class Match {
       for (const p of order) {
         if (p.role === 'GK' && this.holder) break;
         const a = decisions.get(p)!.actions;
-        if (touchBall(p, ball, a.sprint, ball.z > 1.5 ? this.headerAim(p, a) : undefined)) {
+        if (touchBall(p, ball, a.sprint, ball.z > 1.5 ? this.headerAim(p, a) : undefined, this.rng)) {
           if (this.offside.has(p)) {
             ev.push({ type: 'message', text: 'Offside' });
             this.setRestart('free kick', other(p.team), clamp(p.x, 1, PITCH_W - 1), clamp(p.y, 1, PITCH_H - 1));

@@ -34,7 +34,9 @@ export function steer(p: Player, to: Vec2, sprintBeyond = 6, ease = true): Actio
   const dx = to.x - p.x, dy = to.y - p.y, d = Math.hypot(dx, dy);
   if (d < (ease ? 0.3 : 0.05)) return { ...NO_ACTIONS };
   const m = ease ? Math.min(1, d / 1.5) : 1;
-  return { ...NO_ACTIONS, mx: (dx / d) * m, my: (dy / d) * m, sprint: d > sprintBeyond };
+  // Getting back into shape is not worth emptying the tank for; chasing the ball is.
+  const sprint = d > sprintBeyond && (sprintBeyond < 6 || p.stamina > 0.5);
+  return { ...NO_ACTIONS, mx: (dx / d) * m, my: (dy / d) * m, sprint };
 }
 
 /** Roughly where and when this player can first reach the moving ball. */

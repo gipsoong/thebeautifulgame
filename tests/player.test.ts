@@ -73,3 +73,16 @@ describe('first touch', () => {
     expect(trap(11)).toBeGreaterThan(trap(5) * 1.5);
   });
 });
+
+describe('stamina', () => {
+  it('slows a player who sprints for too long, and recovers at a jog', () => {
+    const p = createPlayer(10, 34), ball = farBall(), a = { ...NO_ACTIONS, mx: 1, sprint: true };
+    for (let t = 0; t < 1; t += DT) stepPlayer(p, ball, a, DT);
+    const fresh = p.vx;
+    p.x = 10;
+    for (let t = 0; t < 12; t += DT) { stepPlayer(p, ball, a, DT); if (p.x > 90) p.x = 10; }
+    expect(p.vx).toBeLessThan(fresh * 0.85);
+    for (let t = 0; t < 20; t += DT) stepPlayer(p, ball, NO_ACTIONS, DT);
+    expect(p.stamina).toBeGreaterThan(0.9);
+  });
+});

@@ -90,6 +90,13 @@ export class Renderer {
     things.push({ y: ball.y, draw: () => this.ball(m) });
     things.sort((a, b) => a.y - b.y).forEach((t) => t.draw());
 
+    for (const pl of marked) { // stamina, shown once it starts to drop
+      if (pl.stamina > 0.98) continue;
+      const p = cam.project(pl.x, pl.y, 2.3), bw = 40;
+      if (p.hidden) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(p.x - bw / 2, p.y - 16, bw, 3);
+      ctx.fillStyle = pl.stamina < 0.4 ? '#ff6b4a' : '#7ee08a'; ctx.fillRect(p.x - bw / 2, p.y - 16, bw * pl.stamina, 3);
+    }
     for (const pl of marked) { // power bar
       if (!pl.chargeKind) continue;
       const p = cam.project(pl.x, pl.y, 2.3), bw = 60;
